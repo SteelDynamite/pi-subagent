@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## 0.0.3 - 2026-08-15
+
+- Simplified the shared locational manifest to one absolute-path and description bullet per agent.
+
+## 0.0.2 - 2026-08-15
+
 - Changed the locational area card and model prompt to use one full canonical routing string with identical expanded and collapsed display.
 
 ## 0.0.1 - 2026-08-15

@@ -50,8 +50,10 @@ async function withCleanManifestEnv(fn) {
 test("area manifest uses visible canonical locational records only", () => {
 	const cwd = resolve("/project");
 	const owned = join(cwd, "packages", "owned");
-	const manifest = makeLocationalAreaManifest(cwd, [
+	const other = join(cwd, "packages", "other");
+	const manifest = makeLocationalAreaManifest([
 		agent(owned),
+		agent(other, { description: "Owns other source." }),
 		agent(join(cwd, "hidden"), { manifest: false }),
 		agent(join(cwd, "behavioral"), { id: "worker", kind: "behavioral", origin: "user" }),
 	]);
@@ -59,14 +61,10 @@ test("area manifest uses visible canonical locational records only", () => {
 	assert.deepEqual(manifest, {
 		content: `## Available locational agents
 
-Source roots are owned by locational agents. Work inside them must be delegated rather than handled directly by the parent agent.
+Each path below is both a locational agent's source root and full \`subprocess\` id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.
 
-Use the \`subprocess\` tool with the full subprocess id and required session intent (\`new\` for a first/fresh call; \`resume\` only when the previous result for that agent says so). Direct access is allowed only when the user explicitly authorizes it for the specific source root and task. Do not delegate a locational agent to its own current source root or an active source ancestor; recursion guards block those loops.
-
-- **Subprocess id:** \`/project/packages/owned\`
-  - **Source root:** \`/project/packages/owned\` (relative to parent: \`packages/owned\`)
-  - **Description:** Owns this source.
-  - **Routing:** Delegate work for this source root with \`subprocess\` id \`/project/packages/owned\`.`,
+- \`/project/packages/owned\`: Owns this source.
+- \`/project/packages/other\`: Owns other source.`,
 	});
 });
 
@@ -111,7 +109,7 @@ test("TUI lifecycle append is trusted, durable, and deduplicated on the active b
 		assert.equal(appendLocationalAreaManifest(pi, ctx), true);
 		assert.equal(appended.length, 1);
 		assert.equal(appended[0].customType, LOCATIONAL_AREA_MANIFEST_ENTRY);
-		assert.match(appended[0].data.content, /\*\*Source root:\*\* .*relative to parent: `owned`/);
+		assert.equal(appended[0].data.content.includes(`- \`${owned}\`: Owns the service.`), true);
 		assert.equal(appendLocationalAreaManifest(pi, ctx), false, "reload/resume must not repeat a visible snapshot");
 
 		visibleEntries = [];
@@ -212,7 +210,7 @@ test("area manifest is suppressed outside trusted parent TUI sessions", () => wi
 	assert.equal(calls, 0);
 }));
 
-test("legacy v0.0.1 area data formats as full canonical locational content", () => {
+test("legacy v0.0.1 area data formats as the minimal canonical locational manifest", () => {
 	const content = formatLocationalAreaManifest({
 		areas: [{
 			id: "/project/repos/pi-answer",
@@ -220,12 +218,11 @@ test("legacy v0.0.1 area data formats as full canonical locational content", () 
 			responsibility: "Maintains the pi-answer extension",
 		}],
 	});
-	assert.match(content, /^## Available locational agents/);
-	assert.match(content, /Source roots are owned by locational agents\./);
-	assert.match(content, /\*\*Subprocess id:\*\* `\/project\/repos\/pi-answer`/);
-	assert.match(content, /\*\*Source root:\*\* `\/project\/repos\/pi-answer` \(relative to parent: `repos\/pi-answer`\)/);
-	assert.match(content, /\*\*Description:\*\* Maintains the pi-answer extension/);
-	assert.match(content, /\*\*Routing:\*\* Delegate work for this source root with `subprocess` id `\/project\/repos\/pi-answer`\./);
+	assert.equal(content, `## Available locational agents
+
+Each path below is both a locational agent's source root and full \`subprocess\` id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.
+
+- \`/project/repos/pi-answer\`: Maintains the pi-answer extension`);
 });
 
 test("area manifest renderer has identical collapsed and expanded content", () => {
@@ -247,18 +244,16 @@ test("area manifest renderer has identical collapsed and expanded content", () =
 		},
 	};
 	const entry = {
-		data: makeLocationalAreaManifest("/project", [agent("/project/owned", { description: "Owns it." })]),
+		data: makeLocationalAreaManifest([agent("/project/owned", { description: "Owns it." })]),
 	};
 	const collapsed = renderLocationalAreaManifest(entry, { expanded: false }, theme).render(120).join("\n");
 	const expanded = renderLocationalAreaManifest(entry, { expanded: true }, theme).render(120).join("\n");
 
 	assert.equal(expanded, collapsed);
 	assert.match(collapsed, /Available locational agents/);
-	assert.match(collapsed, /Source roots are owned by locational agents/);
-	assert.match(collapsed, /\/project\/owned/);
-	assert.match(collapsed, /relative to parent: owned/);
-	assert.match(collapsed, /Description: Owns it\./);
-	assert.match(collapsed, /Routing: Delegate work for this source root with subprocess id \/project\/owned\./);
+	assert.match(collapsed, /Each path below is both a locational agent's source root and full subprocess id\./);
+	assert.match(collapsed, /- \/project\/owned: Owns it\./);
+	assert.doesNotMatch(collapsed, /relative to parent|Source root:|Description:|Routing:/);
 	assert.ok(foregrounds.includes("customMessageText"));
 	assert.ok(backgrounds.every((color) => color === "customMessageBg"));
 	assert.ok(backgrounds.length > 0);

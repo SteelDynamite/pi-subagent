@@ -130,7 +130,7 @@ export default function (pi: ExtensionAPI) {
 		const advertiseLocationalAgents = shouldAdvertiseLocationalAgents();
 		const discovery = discoverAgents(ctx.cwd, "user", { includeLocationalAgents: advertiseLocationalAgents });
 		const behavioralManifest = formatBehavioralAgentManifest(discovery.agents);
-		const locationalManifest = makeLocationalAreaManifest(ctx.cwd, discovery.locationalAgents);
+		const locationalManifest = makeLocationalAreaManifest(discovery.locationalAgents);
 		const promptParts: string[] = [];
 
 		if (behavioralManifest) {

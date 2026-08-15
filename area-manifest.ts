@@ -1,4 +1,3 @@
-import * as path from "node:path";
 import { Box, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import type { AgentConfig } from "./agents.ts";
 import { discoverAgents } from "./agents.ts";
@@ -35,38 +34,28 @@ function inlineCode(text: string): string {
 	return `${fence}${text}${fence}`;
 }
 
-function formatLocationalAreas(areas: Array<{ id: string; sourceRoot: string; relativeSourceRoot: string; responsibility: string }>): string {
+function formatLocationalAreas(areas: Array<{ id: string; responsibility: string }>): string {
 	if (areas.length === 0) return "";
-	const entries = areas.map((area) => [
-		`- **Subprocess id:** ${inlineCode(area.id)}`,
-		`  - **Source root:** ${inlineCode(area.sourceRoot)} (relative to parent: ${inlineCode(area.relativeSourceRoot)})`,
-		`  - **Description:** ${escapeMarkdown(area.responsibility)}`,
-		`  - **Routing:** Delegate work for this source root with ${inlineCode("subprocess")} id ${inlineCode(area.id)}.`,
-	].join("\n")).join("\n");
 	return [
 		"## Available locational agents",
 		"",
-		"Source roots are owned by locational agents. Work inside them must be delegated rather than handled directly by the parent agent.",
+		`Each path below is both a locational agent's source root and full ${inlineCode("subprocess")} id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.`,
 		"",
-		`Use the ${inlineCode("subprocess")} tool with the full subprocess id and required session intent (${inlineCode("new")} for a first/fresh call; ${inlineCode("resume")} only when the previous result for that agent says so). Direct access is allowed only when the user explicitly authorizes it for the specific source root and task. Do not delegate a locational agent to its own current source root or an active source ancestor; recursion guards block those loops.`,
-		"",
-		entries,
+		areas.map((area) => `- ${inlineCode(area.id)}: ${escapeMarkdown(area.responsibility)}`).join("\n"),
 	].join("\n");
 }
 
-export function formatLocationalAgentContent(cwd: string, agents: AgentConfig[]): string {
+export function formatLocationalAgentContent(agents: AgentConfig[]): string {
 	return formatLocationalAreas(agents
 		.filter((agent) => agent.kind === "locational" && agent.manifest)
 		.map((agent) => ({
 			id: agent.id,
-			sourceRoot: agent.rootDir,
-			relativeSourceRoot: path.relative(cwd, agent.rootDir) || ".",
 			responsibility: agent.description || "No responsibility description.",
 		})));
 }
 
-export function makeLocationalAreaManifest(cwd: string, agents: AgentConfig[]): LocationalAreaManifestData | undefined {
-	const content = formatLocationalAgentContent(cwd, agents);
+export function makeLocationalAreaManifest(agents: AgentConfig[]): LocationalAreaManifestData | undefined {
+	const content = formatLocationalAgentContent(agents);
 	return content ? { content } : undefined;
 }
 
@@ -74,8 +63,6 @@ export function formatLocationalAreaManifest(data: LocationalAreaManifestData): 
 	if (data.content !== undefined) return data.content;
 	return formatLocationalAreas((data.areas ?? []).map((area) => ({
 		id: area.id,
-		sourceRoot: area.id,
-		relativeSourceRoot: area.sourceRoot,
 		responsibility: area.responsibility,
 	})));
 }
@@ -123,7 +110,7 @@ export function appendLocationalAreaManifest(pi: ExtensionAPI, ctx: ExtensionCon
 	if (visibleEntries.some((entry) => entry.type === "custom" && entry.customType === LOCATIONAL_AREA_MANIFEST_ENTRY)) return false;
 
 	const discovery = discoverAgents(ctx.cwd, "user", { includeLocationalAgents: true });
-	const manifest = makeLocationalAreaManifest(ctx.cwd, discovery.locationalAgents);
+	const manifest = makeLocationalAreaManifest(discovery.locationalAgents);
 	if (!manifest) return false;
 	pi.appendEntry(LOCATIONAL_AREA_MANIFEST_ENTRY, manifest);
 	return true;
