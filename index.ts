@@ -23,7 +23,8 @@ import {
 	isPathInside,
 	loadLocationalAgent,
 } from "./agents.ts";
-import { ADVERTISE_LOCATIONAL_AGENTS_ENV, CURRENT_LOCATIONAL_ROOT_ENV, DEFAULT_KNOWN_TOOLS, MAX_CONCURRENCY, MAX_PARALLEL_TASKS } from "./constants.ts";
+import { appendLocationalAreaManifest, registerLocationalAreaManifestRenderer, shouldAdvertiseLocationalAgents } from "./area-manifest.ts";
+import { CURRENT_LOCATIONAL_ROOT_ENV, DEFAULT_KNOWN_TOOLS, MAX_CONCURRENCY, MAX_PARALLEL_TASKS } from "./constants.ts";
 import { runCommandTask, type CommandTaskInput } from "./command.ts";
 import { mapWithConcurrencyLimit, resolveAgent, runDelegation, setKnownToolNames, validateAgentTools } from "./execution.ts";
 import { addHandoffDocsToTask, getAgentId, getMissingSessionError } from "./params.ts";
@@ -61,14 +62,17 @@ type SubprocessToolParams = {
 	includeLocationalAgents?: boolean;
 };
 
-function shouldAdvertiseLocationalAgents(): boolean {
-	const value = process.env[ADVERTISE_LOCATIONAL_AGENTS_ENV]?.trim().toLowerCase();
-	return value !== "0" && value !== "false" && value !== "no" && value !== "off";
-}
-
 export default function (pi: ExtensionAPI) {
-	pi.on("session_start", async (_event, ctx) => restoreSubprocessState(ctx));
-	pi.on("session_tree", async (_event, ctx) => restoreSubprocessState(ctx));
+	registerLocationalAreaManifestRenderer(pi);
+	pi.on("session_start", async (_event, ctx) => {
+		restoreSubprocessState(ctx);
+		appendLocationalAreaManifest(pi, ctx);
+	});
+	pi.on("session_tree", async (_event, ctx) => {
+		restoreSubprocessState(ctx);
+		appendLocationalAreaManifest(pi, ctx);
+	});
+	pi.on("session_compact", async (_event, ctx) => appendLocationalAreaManifest(pi, ctx));
 
 	const settingsCommand = {
 		description: "Configure subprocess-agent session reuse and context threshold",

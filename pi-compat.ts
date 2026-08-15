@@ -14,9 +14,12 @@ export interface ExtensionUIContext {
 export interface ExtensionContext {
 	ui: ExtensionUIContext;
 	hasUI: boolean;
+	mode: "tui" | "rpc" | "json" | "print";
 	cwd: string;
+	isProjectTrusted(): boolean;
 	sessionManager: {
 		getBranch(): Array<{ type?: string; customType?: string; data?: unknown }>;
+		buildContextEntries(): Array<{ type?: string; customType?: string; data?: unknown }>;
 		getSessionFile?(): string;
 		getSessionId?(): string;
 	};
@@ -30,6 +33,7 @@ export interface ExtensionAPI {
 	on(event: string, handler: (event: any, ctx: ExtensionContext) => unknown): void;
 	registerCommand(name: string, options: { description?: string; handler: (args: unknown, ctx: ExtensionContext) => unknown }): void;
 	registerTool(tool: any): void;
+	registerEntryRenderer<T = unknown>(customType: string, renderer: (entry: { data?: T }, options: { expanded: boolean }, theme: any) => unknown): void;
 	appendEntry<T = unknown>(customType: string, data?: T): void;
 }
 
