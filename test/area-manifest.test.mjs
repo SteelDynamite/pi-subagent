@@ -16,6 +16,7 @@ import {
 	SUBPROCESS_CHILD_ENV,
 } from "../constants.ts";
 import subprocessExtension from "../index.ts";
+import { formatBehavioralAgentManifest } from "../prompt.ts";
 
 function agent(rootDir, overrides = {}) {
 	return {
@@ -47,7 +48,7 @@ async function withCleanManifestEnv(fn) {
 }
 
 test("area manifest uses visible canonical locational records only", () => {
-	const cwd = resolve("/tmp/project");
+	const cwd = resolve("/project");
 	const owned = join(cwd, "packages", "owned");
 	const manifest = makeLocationalAreaManifest(cwd, [
 		agent(owned),
@@ -56,8 +57,28 @@ test("area manifest uses visible canonical locational records only", () => {
 	]);
 
 	assert.deepEqual(manifest, {
-		areas: [{ id: owned, sourceRoot: "packages/owned", responsibility: "Owns this source." }],
+		content: `## Available locational agents
+
+Source roots are owned by locational agents. Work inside them must be delegated rather than handled directly by the parent agent.
+
+Use the \`subprocess\` tool with the full subprocess id and required session intent (\`new\` for a first/fresh call; \`resume\` only when the previous result for that agent says so). Direct access is allowed only when the user explicitly authorizes it for the specific source root and task. Do not delegate a locational agent to its own current source root or an active source ancestor; recursion guards block those loops.
+
+- **Subprocess id:** \`/project/packages/owned\`
+  - **Source root:** \`/project/packages/owned\` (relative to parent: \`packages/owned\`)
+  - **Description:** Owns this source.
+  - **Routing:** Delegate work for this source root with \`subprocess\` id \`/project/packages/owned\`.`,
 	});
+});
+
+test("behavioral manifest excludes locational agents", () => {
+	const behavioral = agent("/project/worker", { id: "worker", kind: "behavioral", origin: "user", description: "General work." });
+	const manifest = formatBehavioralAgentManifest([behavioral, agent("/project/owned")]);
+	assert.equal(manifest, `<available-behavioral-subprocess-agents>
+  <agent>
+    <id>worker</id>
+    <description>General work.</description>
+  </agent>
+</available-behavioral-subprocess-agents>`);
 });
 
 test("TUI lifecycle append is trusted, durable, and deduplicated on the active branch", () => withCleanManifestEnv(() => {
@@ -90,7 +111,7 @@ test("TUI lifecycle append is trusted, durable, and deduplicated on the active b
 		assert.equal(appendLocationalAreaManifest(pi, ctx), true);
 		assert.equal(appended.length, 1);
 		assert.equal(appended[0].customType, LOCATIONAL_AREA_MANIFEST_ENTRY);
-		assert.equal(appended[0].data.areas[0].sourceRoot, "owned");
+		assert.match(appended[0].data.content, /\*\*Source root:\*\* .*relative to parent: `owned`/);
 		assert.equal(appendLocationalAreaManifest(pi, ctx), false, "reload/resume must not repeat a visible snapshot");
 
 		visibleEntries = [];
@@ -146,6 +167,12 @@ test("extension lifecycle restores one visible snapshot after start, tree naviga
 		await handlers.get("session_start")[0]({ reason: "reload" }, ctx);
 		assert.equal(appended.length, 1);
 
+		const modelPrompt = await handlers.get("before_agent_start")[0]({
+			systemPrompt: "base",
+			systemPromptOptions: { contextFiles: [], selectedTools: [], toolSnippets: {} },
+		}, ctx);
+		assert.equal(modelPrompt.systemPrompt.endsWith(appended[0].data.content), true, "model and TUI must receive the same canonical locational text");
+
 		visibleEntries = [];
 		await handlers.get("session_tree")[0]({}, ctx);
 		assert.equal(appended.length, 2);
@@ -185,25 +212,23 @@ test("area manifest is suppressed outside trusted parent TUI sessions", () => wi
 	assert.equal(calls, 0);
 }));
 
-test("area manifest formats compact defaults and expanded-only route ids", () => {
-	const data = {
+test("legacy v0.0.1 area data formats as full canonical locational content", () => {
+	const content = formatLocationalAreaManifest({
 		areas: [{
 			id: "/project/repos/pi-answer",
 			sourceRoot: "repos/pi-answer",
 			responsibility: "Maintains the pi-answer extension",
 		}],
-	};
-	assert.equal(
-		formatLocationalAreaManifest(data, false),
-		"- **pi-answer** (`repos/pi-answer`): Maintains the pi-answer extension",
-	);
-	assert.equal(
-		formatLocationalAreaManifest(data, true),
-		'- **pi-answer** (`repos/pi-answer`): Maintains the pi-answer extension\n  - `subprocess id "/project/repos/pi-answer"`',
-	);
+	});
+	assert.match(content, /^## Available locational agents/);
+	assert.match(content, /Source roots are owned by locational agents\./);
+	assert.match(content, /\*\*Subprocess id:\*\* `\/project\/repos\/pi-answer`/);
+	assert.match(content, /\*\*Source root:\*\* `\/project\/repos\/pi-answer` \(relative to parent: `repos\/pi-answer`\)/);
+	assert.match(content, /\*\*Description:\*\* Maintains the pi-answer extension/);
+	assert.match(content, /\*\*Routing:\*\* Delegate work for this source root with `subprocess` id `\/project\/repos\/pi-answer`\./);
 });
 
-test("area manifest renderer uses custom-message card theme roles", () => {
+test("area manifest renderer has identical collapsed and expanded content", () => {
 	const foregrounds = [];
 	const backgrounds = [];
 	const style = (text) => text;
@@ -221,17 +246,19 @@ test("area manifest renderer uses custom-message card theme roles", () => {
 			return text;
 		},
 	};
-	const component = renderLocationalAreaManifest({
-		data: {
-			areas: [{ id: "/project/owned", sourceRoot: "owned", responsibility: "Owns it." }],
-		},
-	}, { expanded: false }, theme);
-	const rendered = component.render(100).join("\n");
+	const entry = {
+		data: makeLocationalAreaManifest("/project", [agent("/project/owned", { description: "Owns it." })]),
+	};
+	const collapsed = renderLocationalAreaManifest(entry, { expanded: false }, theme).render(120).join("\n");
+	const expanded = renderLocationalAreaManifest(entry, { expanded: true }, theme).render(120).join("\n");
 
-	assert.match(rendered, /\[areas\]/);
-	assert.match(rendered, /- owned \(owned\): Owns it\./);
-	assert.doesNotMatch(rendered, /\/project\/owned/);
-	assert.ok(foregrounds.includes("customMessageLabel"));
+	assert.equal(expanded, collapsed);
+	assert.match(collapsed, /Available locational agents/);
+	assert.match(collapsed, /Source roots are owned by locational agents/);
+	assert.match(collapsed, /\/project\/owned/);
+	assert.match(collapsed, /relative to parent: owned/);
+	assert.match(collapsed, /Description: Owns it\./);
+	assert.match(collapsed, /Routing: Delegate work for this source root with subprocess id \/project\/owned\./);
 	assert.ok(foregrounds.includes("customMessageText"));
 	assert.ok(backgrounds.every((color) => color === "customMessageBg"));
 	assert.ok(backgrounds.length > 0);

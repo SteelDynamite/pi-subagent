@@ -23,12 +23,12 @@ import {
 	isPathInside,
 	loadLocationalAgent,
 } from "./agents.ts";
-import { appendLocationalAreaManifest, registerLocationalAreaManifestRenderer, shouldAdvertiseLocationalAgents } from "./area-manifest.ts";
+import { appendLocationalAreaManifest, formatLocationalAreaManifest, makeLocationalAreaManifest, registerLocationalAreaManifestRenderer, shouldAdvertiseLocationalAgents } from "./area-manifest.ts";
 import { CURRENT_LOCATIONAL_ROOT_ENV, DEFAULT_KNOWN_TOOLS, MAX_CONCURRENCY, MAX_PARALLEL_TASKS } from "./constants.ts";
 import { runCommandTask, type CommandTaskInput } from "./command.ts";
 import { mapWithConcurrencyLimit, resolveAgent, runDelegation, setKnownToolNames, validateAgentTools } from "./execution.ts";
 import { addHandoffDocsToTask, getAgentId, getMissingSessionError } from "./params.ts";
-import { formatLocalLocationalPrompt, formatSubprocessAgentManifest } from "./prompt.ts";
+import { formatBehavioralAgentManifest, formatLocalLocationalPrompt } from "./prompt.ts";
 import { getFinalOutput, getResultOutput, isFailedResult, makeErrorResult, truncateParallelOutput } from "./result.ts";
 import { SubprocessParams } from "./schema.ts";
 import { commandFilesystemTargets, getGuardedLocationalRoots, getLocationalLoopError, notifyLocationalBoundaryDiscovered, resolveFilesystemTarget } from "./locational-guard.ts";
@@ -129,14 +129,16 @@ export default function (pi: ExtensionAPI) {
 
 		const advertiseLocationalAgents = shouldAdvertiseLocationalAgents();
 		const discovery = discoverAgents(ctx.cwd, "user", { includeLocationalAgents: advertiseLocationalAgents });
-		const manifest = formatSubprocessAgentManifest(discovery.agents);
+		const behavioralManifest = formatBehavioralAgentManifest(discovery.agents);
+		const locationalManifest = makeLocationalAreaManifest(ctx.cwd, discovery.locationalAgents);
 		const promptParts: string[] = [];
 
-		if (manifest) {
+		if (behavioralManifest) {
 			promptParts.push(
-				`Subprocess agents can be delegated to with the subprocess tool by id and required session intent ("new" or "resume"). Use session: "new" for a first/fresh call; use session: "resume" only when the previous result for that same subprocess agent said to. Locational agent ids are locational boundaries; by default, do not read, search, edit, or run commands inside those folders directly from this agent. If the user explicitly authorizes direct access for a specific source root and task, direct access is allowed for that user request only. Do not delegate a locational agent to its own current source root or an active source ancestor; the tool blocks recursive source loops.\n\n${manifest}`,
+				`Behavioral subprocess agents can be delegated to with the subprocess tool by id and required session intent ("new" or "resume"). Use session: "new" for a first/fresh call; use session: "resume" only when the previous result for that same subprocess agent said to. Behavioral agents run from the caller cwd by default.\n\n${behavioralManifest}`,
 			);
 		}
+		if (locationalManifest) promptParts.push(formatLocationalAreaManifest(locationalManifest));
 
 		const activeLocationalRoot = process.env[CURRENT_LOCATIONAL_ROOT_ENV];
 		if (advertiseLocationalAgents && (!activeLocationalRoot || path.resolve(activeLocationalRoot) !== path.resolve(ctx.cwd))) {

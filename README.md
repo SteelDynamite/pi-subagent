@@ -7,7 +7,7 @@ Run specialized Pi agents with isolated contexts, or run shell commands, while t
 ## Features
 
 - **Agent subprocesses**: behavioral and locational Pi agents run in separate `pi` processes.
-- **Locational area card**: trusted parent TUI sessions show compact area names, relative source roots, responsibilities, and expandable delegation ids without adding another model-context message.
+- **Locational area card**: trusted parent TUI sessions show the same canonical locational-agent routing text injected for the model, without adding the card entry itself to model context.
 - **Command subprocesses**: shell commands run with bounded foreground parallelism.
 - **Streaming progress**: single, parallel, chain, and command modes stream status. Model usage labels append lowercase `fast` when pi-chatgpt Fast mode is effective.
 - **Consolidated results**: parent receives final output, exit status, cwd, stderr/stdout, usage, truncation metadata, and clear context-limit failures.
@@ -97,7 +97,7 @@ Agent failures that look like context-window exhaustion are reported with `stopR
 
 Locational discovery defaults: max depth `6`, timeout `500ms`. Use `PI_SUBPROCESS_LOCATIONAL_SCAN_MAX_DEPTH` and `PI_SUBPROCESS_LOCATIONAL_SCAN_TIMEOUT_MS` to override them.
 
-In trusted parent TUI sessions, visible (`manifest: true`) locational discovery records are also stored as a custom session entry and rendered as a themed `[areas]` card. Each default bullet shows the source-root basename, relative source root, and responsibility; expanded mode adds the exact `subprocess` route id. The card uses the same discovery results as locational-agent advertisement, lists behavioral agents nowhere, and never enters model context. The active compaction-aware branch is deduplicated: reload and resume preserve an existing card; tree navigation or compaction adds one only when the selected/rendered branch no longer contains one. A card is a session snapshot and does not refresh changed definitions while it remains visible. RPC, JSON, print, untrusted, advertisement-disabled, and subprocess-child sessions do not append cards.
+In trusted parent TUI sessions, visible (`manifest: true`) locational discovery records are also stored as a custom session entry and rendered as a themed area card. One canonical string supplies both the model-facing locational section and the card content: ownership/delegation guidance plus every full subprocess id, absolute and parent-relative source root, description, and route. Behavioral-agent content remains separate. Expanded and collapsed card views are identical, and the custom card entry itself never enters model context. The active compaction-aware branch is deduplicated: reload and resume preserve an existing card; tree navigation or compaction adds one only when the selected/rendered branch no longer contains one. A card is a session snapshot and does not refresh changed definitions while it remains visible. RPC, JSON, print, untrusted, advertisement-disabled, and subprocess-child sessions do not append cards.
 
 ## Child Environment
 

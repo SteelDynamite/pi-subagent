@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import { Box, Markdown, type MarkdownTheme, Text } from "@earendil-works/pi-tui";
+import { Box, Markdown, type MarkdownTheme } from "@earendil-works/pi-tui";
 import type { AgentConfig } from "./agents.ts";
 import { discoverAgents } from "./agents.ts";
 import {
@@ -12,7 +12,8 @@ import type { ExtensionAPI, ExtensionContext } from "./pi-compat.ts";
 export const LOCATIONAL_AREA_MANIFEST_ENTRY = "pi-subprocess-locational-areas";
 
 export interface LocationalAreaManifestData {
-	areas: Array<{
+	content?: string;
+	areas?: Array<{
 		id: string;
 		sourceRoot: string;
 		responsibility: string;
@@ -22,18 +23,6 @@ export interface LocationalAreaManifestData {
 export function shouldAdvertiseLocationalAgents(): boolean {
 	const value = process.env[ADVERTISE_LOCATIONAL_AGENTS_ENV]?.trim().toLowerCase();
 	return value !== "0" && value !== "false" && value !== "no" && value !== "off";
-}
-
-export function makeLocationalAreaManifest(cwd: string, agents: AgentConfig[]): LocationalAreaManifestData | undefined {
-	const areas = agents
-		.filter((agent) => agent.kind === "locational" && agent.manifest)
-		.map((agent) => ({
-			id: agent.id,
-			sourceRoot: path.relative(cwd, agent.rootDir) || ".",
-			responsibility: agent.description || "No responsibility description.",
-		}));
-	if (areas.length === 0) return undefined;
-	return { areas };
 }
 
 function escapeMarkdown(text: string): string {
@@ -46,14 +35,49 @@ function inlineCode(text: string): string {
 	return `${fence}${text}${fence}`;
 }
 
-export function formatLocationalAreaManifest(data: LocationalAreaManifestData, expanded: boolean): string {
-	return data.areas
-		.map((area) => {
-			const name = path.basename(area.sourceRoot) || path.basename(area.id);
-			const summary = `- **${escapeMarkdown(name)}** (${inlineCode(area.sourceRoot)}): ${escapeMarkdown(area.responsibility)}`;
-			return expanded ? `${summary}\n  - ${inlineCode(`subprocess id ${JSON.stringify(area.id)}`)}` : summary;
-		})
-		.join("\n");
+function formatLocationalAreas(areas: Array<{ id: string; sourceRoot: string; relativeSourceRoot: string; responsibility: string }>): string {
+	if (areas.length === 0) return "";
+	const entries = areas.map((area) => [
+		`- **Subprocess id:** ${inlineCode(area.id)}`,
+		`  - **Source root:** ${inlineCode(area.sourceRoot)} (relative to parent: ${inlineCode(area.relativeSourceRoot)})`,
+		`  - **Description:** ${escapeMarkdown(area.responsibility)}`,
+		`  - **Routing:** Delegate work for this source root with ${inlineCode("subprocess")} id ${inlineCode(area.id)}.`,
+	].join("\n")).join("\n");
+	return [
+		"## Available locational agents",
+		"",
+		"Source roots are owned by locational agents. Work inside them must be delegated rather than handled directly by the parent agent.",
+		"",
+		`Use the ${inlineCode("subprocess")} tool with the full subprocess id and required session intent (${inlineCode("new")} for a first/fresh call; ${inlineCode("resume")} only when the previous result for that agent says so). Direct access is allowed only when the user explicitly authorizes it for the specific source root and task. Do not delegate a locational agent to its own current source root or an active source ancestor; recursion guards block those loops.`,
+		"",
+		entries,
+	].join("\n");
+}
+
+export function formatLocationalAgentContent(cwd: string, agents: AgentConfig[]): string {
+	return formatLocationalAreas(agents
+		.filter((agent) => agent.kind === "locational" && agent.manifest)
+		.map((agent) => ({
+			id: agent.id,
+			sourceRoot: agent.rootDir,
+			relativeSourceRoot: path.relative(cwd, agent.rootDir) || ".",
+			responsibility: agent.description || "No responsibility description.",
+		})));
+}
+
+export function makeLocationalAreaManifest(cwd: string, agents: AgentConfig[]): LocationalAreaManifestData | undefined {
+	const content = formatLocationalAgentContent(cwd, agents);
+	return content ? { content } : undefined;
+}
+
+export function formatLocationalAreaManifest(data: LocationalAreaManifestData): string {
+	if (data.content !== undefined) return data.content;
+	return formatLocationalAreas((data.areas ?? []).map((area) => ({
+		id: area.id,
+		sourceRoot: area.id,
+		relativeSourceRoot: area.sourceRoot,
+		responsibility: area.responsibility,
+	})));
 }
 
 function makeMarkdownTheme(theme: any): MarkdownTheme {
@@ -75,11 +99,11 @@ function makeMarkdownTheme(theme: any): MarkdownTheme {
 	};
 }
 
-export function renderLocationalAreaManifest(entry: { data?: LocationalAreaManifestData }, { expanded }: { expanded: boolean }, theme: any) {
+export function renderLocationalAreaManifest(entry: { data?: LocationalAreaManifestData }, _options: { expanded: boolean }, theme: any) {
 	const box = new Box(1, 1, (text) => theme.bg("customMessageBg", text));
-	box.addChild(new Text(theme.fg("customMessageLabel", theme.bold("[areas]")), 0, 0));
-	if (entry.data?.areas.length) {
-		box.addChild(new Markdown(formatLocationalAreaManifest(entry.data, expanded), 0, 0, makeMarkdownTheme(theme), {
+	const content = entry.data ? formatLocationalAreaManifest(entry.data) : "";
+	if (content) {
+		box.addChild(new Markdown(content, 0, 0, makeMarkdownTheme(theme), {
 			color: (text: string) => theme.fg("customMessageText", text),
 		}));
 	}

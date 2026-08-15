@@ -20,8 +20,8 @@ function escapeXml(text: string): string {
 	return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-export function formatSubprocessAgentManifest(agents: AgentConfig[]): string {
-	const visible = agents.filter((agent) => agent.manifest);
+export function formatBehavioralAgentManifest(agents: AgentConfig[]): string {
+	const visible = agents.filter((agent) => agent.kind === "behavioral" && agent.manifest);
 	if (visible.length === 0) return "";
 	const entries = visible
 		.map(
@@ -29,6 +29,6 @@ export function formatSubprocessAgentManifest(agents: AgentConfig[]): string {
 				`  <agent>\n    <id>${escapeXml(agent.id)}</id>\n    <description>${escapeXml(agent.description)}</description>\n  </agent>`,
 		)
 		.join("\n");
-	return `<available-subprocess-agents>\n${entries}\n</available-subprocess-agents>`;
+	return `<available-behavioral-subprocess-agents>\n${entries}\n</available-behavioral-subprocess-agents>`;
 }
 
