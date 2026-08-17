@@ -6,7 +6,7 @@ Run specialized Pi agents with isolated contexts, or run shell commands, while t
 
 ## Features
 
-- **Agent subprocesses**: behavioral and locational Pi agents run in separate `pi` processes.
+- **Agent subprocesses**: behavioral and locational Pi agents run in separate `pi` processes. The parent orchestrator plans and delegates; Scout gathers context, Worker executes, and Reviewer reviews only when explicitly requested.
 - **Locational area card**: trusted parent TUI sessions show the same canonical locational-agent routing text injected for the model, without adding the card entry itself to model context.
 - **Command subprocesses**: shell commands run with bounded foreground parallelism.
 - **Streaming progress**: single, parallel, chain, and command modes stream status. Model usage labels append lowercase `fast` when pi-chatgpt Fast mode is effective.
@@ -23,11 +23,12 @@ pi-subprocess/
 ├── agents.ts
 ├── command.ts
 ├── locational-guard.ts
-└── agents/
-    ├── scout/SUBAGENTS.md
-    ├── planner/SUBAGENTS.md
-    ├── reviewer/SUBAGENTS.md
-    └── worker/SUBAGENTS.md
+├── agents/
+│   ├── reviewer/SUBAGENTS.md
+│   ├── scout/SUBAGENTS.md
+│   └── worker/SUBAGENTS.md
+└── prompts/
+    └── implement.md
 ```
 
 ## Installation
@@ -42,6 +43,9 @@ mkdir -p ~/.pi/agent/agents
 for d in agents/*; do
   ln -sfn "$(pwd)/$d" ~/.pi/agent/agents/$(basename "$d")
 done
+
+mkdir -p ~/.pi/agent/prompts
+ln -sf "$(pwd)/prompts/implement.md" ~/.pi/agent/prompts/implement.md
 ```
 
 ## Tool
@@ -68,6 +72,10 @@ Agent calls require `session: "new" | "resume"`. Use `resume` only when the prev
 ```json
 { "id": "scout", "session": "new", "task": "Find authentication code" }
 ```
+
+### Workflow prompt
+
+`/implement <task>` keeps planning in the parent orchestrator and uses Scout for context as needed. It delegates implementation inside an advertised locational root directly to its owning agent; otherwise it uses Worker. Reviewer is used only when explicitly requested.
 
 ## Agent Types
 

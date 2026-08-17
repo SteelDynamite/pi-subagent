@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Refocused behavioral roles: parent orchestrators plan, Scout gathers context, Worker executes, and Reviewer reviews only when explicitly requested.
+- Revised `/implement` for the parent-owned planning flow.
+
 ## 0.0.3 - 2026-08-15
 
 - Simplified the shared locational manifest to one absolute-path and description bullet per agent.
