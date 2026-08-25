@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Renamed the repository, package, and extension to `pi-subagent`, and the public tool to `subagents`, as a hard break.
+- Reduced each tool call to one behavioral or locational agent with explicit session intent.
+- Removed shell-command, batch, chain, scope, compatibility-alias, and behavioral-cwd inputs; built-in `bash` owns commands.
+- Added implicit bundled/user/trusted-project behavioral precedence and trusted locational discovery.
+- Renamed locational state, environment variables, settings, nested progress, and the TUI manifest.
+- Delegated children now set only `PI_ORCHESTRATED_CHILD=1`.
 - Refocused behavioral roles: parent orchestrators plan, Scout gathers context, Worker executes, and Reviewer reviews only when explicitly requested.
 - Revised `/implement` for the parent-owned planning flow.
 

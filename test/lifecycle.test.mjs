@@ -1,44 +1,33 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-	createSubprocessLifecycle,
-	getSubprocessLifecycleSnapshot,
-	markSubprocessActivity,
-	markSubprocessClosed,
-	markSubprocessTerminating,
-	recordSubprocessError,
+	createAgentLifecycle,
+	markAgentActivity,
+	markAgentClosed,
+	markAgentTerminating,
+	recordAgentError,
 } from "../lifecycle.ts";
 
-test("subprocess lifecycle tracks phase, activity, and final snapshot", () => {
-	const state = createSubprocessLifecycle("command", "sample", { timeoutMs: 1000, now: 10 });
+test("agent lifecycle tracks activity, abort, and close", () => {
+	const state = createAgentLifecycle("worker", 10);
 	assert.equal(state.phase, "starting");
-	assert.equal(getSubprocessLifecycleSnapshot(state, 15).exitCode, -1);
-
-	markSubprocessActivity(state, 20);
+	markAgentActivity(state, 20);
 	assert.equal(state.phase, "running");
-	assert.equal(state.lastActivityAt, 20);
-
-	assert.equal(markSubprocessTerminating(state, "timeout", { timedOut: true, now: 30 }), true);
-	assert.equal(markSubprocessTerminating(state, "aborted", { now: 35 }), false);
-	markSubprocessClosed(state, 124, 40);
-
-	assert.deepEqual(getSubprocessLifecycleSnapshot(state, 50), {
-		phase: "closed",
-		exitCode: 124,
-		durationMs: 30,
-		lastActivityAt: 40,
-		stopReason: "timeout",
-		timedOut: true,
-		errorMessage: undefined,
-	});
+	assert.equal(markAgentTerminating(state, 30), true);
+	assert.equal(markAgentTerminating(state, 35), false);
+	assert.equal(state.stopReason, "aborted");
+	assert.match(state.errorMessage, /aborted/);
+	markAgentClosed(state, 130, 40);
+	assert.equal(state.phase, "closed");
+	assert.equal(state.exitCode, 130);
+	assert.equal(state.terminatedAt, 40);
 });
 
-test("subprocess lifecycle records errors before close", () => {
-	const state = createSubprocessLifecycle("agent", "agent", { now: 1 });
-	recordSubprocessError(state, "boom", 2);
-	markSubprocessClosed(state, 1, 3);
-	const snapshot = getSubprocessLifecycleSnapshot(state, 4);
-	assert.equal(snapshot.stopReason, "error");
-	assert.equal(snapshot.errorMessage, "boom");
-	assert.equal(snapshot.exitCode, 1);
+test("agent lifecycle records spawn errors", () => {
+	const state = createAgentLifecycle("worker", 1);
+	recordAgentError(state, "boom", 2);
+	markAgentClosed(state, 1, 3);
+	assert.equal(state.stopReason, "error");
+	assert.equal(state.errorMessage, "boom");
+	assert.equal(state.exitCode, 1);
 });

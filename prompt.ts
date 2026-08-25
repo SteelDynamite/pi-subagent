@@ -29,6 +29,6 @@ export function formatBehavioralAgentManifest(agents: AgentConfig[]): string {
 				`  <agent>\n    <id>${escapeXml(agent.id)}</id>\n    <description>${escapeXml(agent.description)}</description>\n  </agent>`,
 		)
 		.join("\n");
-	return `<available-behavioral-subprocess-agents>\n${entries}\n</available-behavioral-subprocess-agents>`;
+	return `<available-behavioral-subagents>\n${entries}\n</available-behavioral-subagents>`;
 }
 

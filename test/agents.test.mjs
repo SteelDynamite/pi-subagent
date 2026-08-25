@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { discoverAgents, isPathInside, loadLocationalAgent, resolveLocationalAgentId, scanLocationalAgents } from "../agents.ts";
 
 function tempDir() {
-	return mkdtempSync(join(tmpdir(), "pi-subprocess-agents-test-"));
+	return mkdtempSync(join(tmpdir(), "pi-subagent-agents-test-"));
 }
 
 test("loadLocationalAgent parses frontmatter, defaults, and same-root @includes", () => {
@@ -38,7 +38,7 @@ test("loadLocationalAgent reports unsupported frontmatter", () => {
 	}
 });
 
-test("scanLocationalAgents finds nested locational roots, skips node_modules, and resolveLocationalAgentId works", () => {
+test("scanLocationalAgents finds nested roots, skips node_modules, and resolves ids", () => {
 	const root = tempDir();
 	try {
 		const owned = join(root, "owned");
@@ -49,37 +49,48 @@ test("scanLocationalAgents finds nested locational roots, skips node_modules, an
 		writeFileSync(join(skipped, "SUBAGENTS.md"), "---\ndescription: Skipped\n---\nBody\n");
 
 		const scan = scanLocationalAgents(root, { maxDepth: 4, timeoutMs: 1000 });
-		assert.deepEqual(scan.agents.map((a) => realpathSync.native(a.rootDir)), [realpathSync.native(owned)]);
+		assert.deepEqual(scan.agents.map((agent) => realpathSync.native(agent.rootDir)), [realpathSync.native(owned)]);
 		assert.equal(realpathSync.native(resolveLocationalAgentId(root, "owned").rootDir), realpathSync.native(owned));
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 
-test("discoverAgents exposes the bundled behavioral-agent inventory", () => {
+test("behavioral discovery precedence is bundled, user, then trusted project", () => {
 	const root = tempDir();
+	const agentDir = tempDir();
+	const previous = process.env.PI_CODING_AGENT_DIR;
 	try {
-		const discovery = discoverAgents(root, "project", { includeLocationalAgents: false });
-		assert.deepEqual(discovery.agents.map((agent) => agent.id).sort(), ["reviewer", "scout", "worker"]);
-		assert.equal(discovery.agents.find((agent) => agent.id === "scout")?.model, "gpt-5.6-luna");
+		mkdirSync(join(agentDir, "agents", "scout"), { recursive: true });
+		writeFileSync(join(agentDir, "agents", "scout", "SUBAGENTS.md"), "---\ndescription: User scout\n---\nUser\n");
+		mkdirSync(join(root, ".pi", "agents", "scout"), { recursive: true });
+		writeFileSync(join(root, ".pi", "agents", "scout", "SUBAGENTS.md"), "---\ndescription: Project scout\n---\nProject\n");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+
+		const untrusted = discoverAgents(root, false, { includeLocationalAgents: false });
+		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").description, "User scout");
+		assert.equal(untrusted.projectAgentsDir, null);
+
+		const trusted = discoverAgents(root, true, { includeLocationalAgents: false });
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").description, "Project scout");
+		assert.equal(trusted.projectAgentsDir, join(root, ".pi", "agents"));
+		assert.deepEqual(trusted.agents.map((agent) => agent.id).sort(), ["reviewer", "scout", "worker"]);
 	} finally {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previous;
 		rmSync(root, { recursive: true, force: true });
+		rmSync(agentDir, { recursive: true, force: true });
 	}
 });
 
-test("discoverAgents can omit locational agents without changing behavioral-agent scope", () => {
+test("locational discovery requires project trust", () => {
 	const root = tempDir();
 	try {
 		const owned = join(root, "owned");
-		mkdirSync(owned, { recursive: true });
+		mkdirSync(owned);
 		writeFileSync(join(owned, "SUBAGENTS.md"), "---\ndescription: Owned\n---\nBody\n");
-
-		const withLocational = discoverAgents(root, "project", { includeLocationalAgents: true });
-		const withoutLocational = discoverAgents(root, "project", { includeLocationalAgents: false });
-
-		assert.ok(withLocational.locationalAgents.some((a) => realpathSync.native(a.rootDir) === realpathSync.native(owned)));
-		assert.equal(withoutLocational.locationalAgents.length, 0);
-		assert.equal(withoutLocational.agents.some((a) => a.origin === "locational"), false);
+		assert.equal(discoverAgents(root, false).locationalAgents.length, 0);
+		assert.equal(discoverAgents(root, true).locationalAgents[0].rootDir, owned);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -87,18 +98,15 @@ test("discoverAgents can omit locational agents without changing behavioral-agen
 
 test("isPathInside includes root and descendants but excludes siblings", () => {
 	const root = tempDir();
+	const sibling = `${root}-sibling`;
 	try {
 		mkdirSync(join(root, "child"));
-		const sibling = `${root}-sibling`;
 		mkdirSync(sibling);
-		try {
-			assert.equal(isPathInside(root, root), true);
-			assert.equal(isPathInside(join(root, "child"), root), true);
-			assert.equal(isPathInside(sibling, root), false);
-		} finally {
-			rmSync(sibling, { recursive: true, force: true });
-		}
+		assert.equal(isPathInside(root, root), true);
+		assert.equal(isPathInside(join(root, "child"), root), true);
+		assert.equal(isPathInside(sibling, root), false);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
+		rmSync(sibling, { recursive: true, force: true });
 	}
 });

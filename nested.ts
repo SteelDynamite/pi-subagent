@@ -1,27 +1,9 @@
-import { MAX_NESTED_SUBPROCESSES_PER_RESULT, NESTED_SUBPROCESS_DETAIL_CAP } from "./constants.ts";
-import type { NestedSubprocessCall, SingleResult, SubprocessDetails, UsageStats } from "./types.ts";
+import { MAX_NESTED_SUBAGENTS_PER_RESULT, NESTED_SUBAGENT_DETAIL_CAP } from "./constants.ts";
+import type { NestedSubagentCall, SingleResult, SubagentsDetails, UsageStats } from "./types.ts";
 
-const NESTED_TOOL_NAMES = new Set(["subprocess"]);
-
-function isNestedToolName(name: unknown): name is NestedSubprocessCall["toolName"] {
-	return typeof name === "string" && NESTED_TOOL_NAMES.has(name);
-}
-
-export function isSubprocessDetails(value: unknown): value is SubprocessDetails {
-	const details = value as Partial<SubprocessDetails> | undefined;
-	return Boolean(
-		details &&
-		(details.mode === "single" || details.mode === "parallel" || details.mode === "chain") &&
-		Array.isArray(details.results),
-	);
-}
-
-function utf8Bytes(value: unknown): number {
-	try {
-		return Buffer.byteLength(JSON.stringify(value) ?? "", "utf8");
-	} catch {
-		return Number.POSITIVE_INFINITY;
-	}
+function isSubagentsDetails(value: unknown): value is SubagentsDetails {
+	const details = value as Partial<SubagentsDetails> | undefined;
+	return Boolean(details && Array.isArray(details.results));
 }
 
 function truncateUtf8(text: string | undefined, maxBytes: number): string | undefined {
@@ -31,112 +13,29 @@ function truncateUtf8(text: string | undefined, maxBytes: number): string | unde
 	return `${truncated}\n[truncated]`;
 }
 
-function emptyUsage(usage: UsageStats | undefined): UsageStats {
-	return usage ?? { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 };
+function capResult(result: SingleResult): SingleResult {
+	return { ...result, task: truncateUtf8(result.task, 1024) ?? "", messages: [], stdout: truncateUtf8(result.stdout, 2048), stderr: truncateUtf8(result.stderr, 2048) ?? "", warning: truncateUtf8(result.warning, 512), errorMessage: truncateUtf8(result.errorMessage, 512), nestedSubagents: result.nestedSubagents?.slice(0, 2).map((nested) => ({ toolCallId: nested.toolCallId, toolName: nested.toolName, status: nested.status, error: truncateUtf8(nested.error, 512), truncated: true })) };
 }
 
-function makeCappedResult(result: SingleResult): SingleResult {
-	return {
-		kind: result.kind,
-		agent: result.agent,
-		agentOrigin: result.agentOrigin,
-		sessionIntent: result.sessionIntent,
-		wrongSessionIntent: result.wrongSessionIntent,
-		task: truncateUtf8(result.task, 1024) ?? "",
-		exitCode: result.exitCode,
-		messages: [],
-		stdout: truncateUtf8(result.stdout, 2048),
-		stderr: truncateUtf8(result.stderr, 2048) ?? "",
-		stdoutBytes: result.stdoutBytes,
-		stderrBytes: result.stderrBytes,
-		stdoutTruncated: result.stdoutTruncated,
-		stderrTruncated: result.stderrTruncated,
-		usage: emptyUsage(result.usage),
-		model: result.model,
-		contextWindow: result.contextWindow,
-		warning: truncateUtf8(result.warning, 512),
-		stopReason: result.stopReason,
-		errorMessage: truncateUtf8(result.errorMessage, 512),
-		step: result.step,
-		cwd: result.cwd,
-		durationMs: result.durationMs,
-		command: truncateUtf8(result.command, 1024),
-		timeoutMs: result.timeoutMs,
-		timedOut: result.timedOut,
-		nextSessionIntent: result.nextSessionIntent,
-		nestedSubprocesses: result.nestedSubprocesses?.slice(0, 2).map((nested) => ({
-			toolCallId: nested.toolCallId,
-			toolName: nested.toolName,
-			status: nested.status,
-			error: truncateUtf8(nested.error, 512),
-			truncated: true,
-		})),
-	};
+function capDetails(details: SubagentsDetails): { details: SubagentsDetails; truncated: boolean } {
+	if (Buffer.byteLength(JSON.stringify(details), "utf8") <= NESTED_SUBAGENT_DETAIL_CAP) return { details, truncated: false };
+	return { details: { includeLocationalAgents: details.includeLocationalAgents, locationalAgents: details.locationalAgents.slice(0, 8), results: details.results.slice(0, 1).map(capResult) }, truncated: true };
 }
 
-function capSubprocessDetails(details: SubprocessDetails): { details: SubprocessDetails; truncated: boolean } {
-	if (utf8Bytes(details) <= NESTED_SUBPROCESS_DETAIL_CAP) return { details, truncated: false };
+function resultText(result: any): string | undefined { return result?.content?.filter((part: any) => part?.type === "text" && typeof part.text === "string").map((part: any) => part.text).join("\n").trim() || undefined; }
 
-	const capped: SubprocessDetails = {
-		mode: details.mode,
-		agentScope: details.agentScope,
-		includeLocationalAgents: details.includeLocationalAgents,
-		projectAgentsDir: details.projectAgentsDir,
-		locationalAgents: details.locationalAgents.slice(0, 8),
-		results: details.results.slice(0, 4).map(makeCappedResult),
-	};
-	return { details: capped, truncated: true };
-}
-
-function resultText(result: any): string | undefined {
-	const text = result?.content
-		?.filter((part: any) => part?.type === "text" && typeof part.text === "string")
-		.map((part: any) => part.text)
-		.join("\n")
-		.trim();
-	return text || undefined;
-}
-
-function upsertNestedCall(result: SingleResult, toolCallId: string, toolName: NestedSubprocessCall["toolName"]): NestedSubprocessCall | undefined {
-	result.nestedSubprocesses ??= [];
-	let nested = result.nestedSubprocesses.find((call) => call.toolCallId === toolCallId);
-	if (nested) {
-		nested.toolName = toolName;
-		return nested;
+export function applyNestedSubagentEvent(result: SingleResult, event: any): boolean {
+	if (!event || event.toolName !== "subagents" || typeof event.toolCallId !== "string" || !["tool_execution_start", "tool_execution_update", "tool_execution_end"].includes(event.type)) return false;
+	result.nestedSubagents ??= [];
+	let nested = result.nestedSubagents.find((call) => call.toolCallId === event.toolCallId);
+	if (!nested) {
+		if (result.nestedSubagents.length >= MAX_NESTED_SUBAGENTS_PER_RESULT) return false;
+		nested = { toolCallId: event.toolCallId, toolName: "subagents", status: "running" };
+		result.nestedSubagents.push(nested);
 	}
-	if (result.nestedSubprocesses.length >= MAX_NESTED_SUBPROCESSES_PER_RESULT) return undefined;
-	nested = { toolCallId, toolName, status: "running" };
-	result.nestedSubprocesses.push(nested);
-	return nested;
-}
-
-function attachDetails(nested: NestedSubprocessCall, details: unknown): void {
-	if (!isSubprocessDetails(details)) return;
-	const capped = capSubprocessDetails(details);
-	nested.details = capped.details;
-	nested.truncated = nested.truncated || capped.truncated;
-}
-
-export function applyNestedSubprocessEvent(result: SingleResult, event: any): boolean {
-	if (!event || !isNestedToolName(event.toolName) || typeof event.toolCallId !== "string") return false;
-	if (event.type !== "tool_execution_start" && event.type !== "tool_execution_update" && event.type !== "tool_execution_end") return false;
-
-	const nested = upsertNestedCall(result, event.toolCallId, event.toolName);
-	if (!nested) return false;
-
-	if (event.type === "tool_execution_start") {
-		nested.status = "running";
-		nested.error = undefined;
-		return true;
-	}
-
-	if (event.type === "tool_execution_update") {
-		attachDetails(nested, event.partialResult?.details);
-		return true;
-	}
-
-	attachDetails(nested, event.result?.details);
-	nested.status = event.isError ? "failed" : "completed";
-	nested.error = event.isError ? resultText(event.result) ?? "Nested subprocess failed" : undefined;
+	if (event.type === "tool_execution_start") { nested.status = "running"; nested.error = undefined; return true; }
+	const source = event.type === "tool_execution_update" ? event.partialResult?.details : event.result?.details;
+	if (isSubagentsDetails(source)) { const capped = capDetails(source); nested.details = capped.details; nested.truncated ||= capped.truncated; }
+	if (event.type === "tool_execution_end") { nested.status = event.isError ? "failed" : "completed"; nested.error = event.isError ? resultText(event.result) ?? "Nested subagents call failed" : undefined; }
 	return true;
 }

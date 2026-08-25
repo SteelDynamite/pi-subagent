@@ -1,9 +1,8 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import type { AgentScope, AgentOrigin } from "./agents.ts";
+import type { AgentOrigin } from "./agents.ts";
 
 export type SessionIntent = "new" | "resume";
-
 export type NextIntentReason = "none" | "under-threshold" | "over-threshold" | "reuse-disabled" | "non-resumable";
 
 export interface UsageStats {
@@ -16,7 +15,7 @@ export interface UsageStats {
 	turns: number;
 }
 
-export interface SubprocessSettings {
+export interface SubagentSettings {
 	reuseEnabled: boolean;
 	contextThreshold: number;
 }
@@ -32,8 +31,8 @@ export interface TrackedSession {
 	updatedAt: number;
 }
 
-export interface PersistedSubprocessState {
-	settings: SubprocessSettings;
+export interface PersistedSubagentState {
+	settings: SubagentSettings;
 	sessions: TrackedSession[];
 }
 
@@ -45,7 +44,6 @@ export interface WrongSessionIntentError {
 }
 
 export interface SingleResult {
-	kind?: "agent" | "command";
 	agent: string;
 	agentOrigin: AgentOrigin | "unknown";
 	sessionIntent?: SessionIntent;
@@ -53,47 +51,33 @@ export interface SingleResult {
 	task: string;
 	exitCode: number;
 	messages: Message[];
-	stdout?: string;
 	stderr: string;
-	stdoutBytes?: number;
-	stderrBytes?: number;
-	stdoutTruncated?: boolean;
-	stderrTruncated?: boolean;
+	stdout?: string;
 	usage: UsageStats;
 	model?: string;
 	contextWindow?: number;
 	warning?: string;
 	stopReason?: string;
 	errorMessage?: string;
-	step?: number;
 	cwd?: string;
-	durationMs?: number;
-	command?: string;
-	timeoutMs?: number;
-	timedOut?: boolean;
 	nextSessionIntent?: SessionIntent;
-	nestedSubprocesses?: NestedSubprocessCall[];
+	nestedSubagents?: NestedSubagentCall[];
 }
 
-export interface NestedSubprocessCall {
+export interface NestedSubagentCall {
 	toolCallId: string;
-	toolName: "subprocess";
+	toolName: "subagents";
 	status: "running" | "completed" | "failed";
-	details?: SubprocessDetails;
+	details?: SubagentsDetails;
 	error?: string;
 	truncated?: boolean;
 }
 
-export interface SubprocessDetails {
-	mode: "single" | "parallel" | "chain";
-	agentScope: AgentScope;
+export interface SubagentsDetails {
 	includeLocationalAgents: boolean;
-	projectAgentsDir: string | null;
 	locationalAgents: string[];
 	results: SingleResult[];
 }
 
 export type DisplayItem = { type: "text"; text: string } | { type: "toolCall"; name: string; args: Record<string, any> };
-
-export type OnUpdateCallback = (partial: AgentToolResult<SubprocessDetails>) => void;
-export type OnCommandUpdateCallback = (result: SingleResult) => void;
+export type OnUpdateCallback = (partial: AgentToolResult<SubagentsDetails>) => void;

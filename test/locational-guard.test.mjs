@@ -31,7 +31,7 @@ beforeEach(clearEnv);
 afterEach(resetEnv);
 
 function tempDir() {
-	return mkdtempSync(join(tmpdir(), "pi-subprocess-test-"));
+	return mkdtempSync(join(tmpdir(), "pi-subagent-test-"));
 }
 
 test("resolveFilesystemTarget ignores URLs and resolves relative, bare, and home-like filesystem paths", () => {
