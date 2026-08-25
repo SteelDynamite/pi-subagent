@@ -66,18 +66,18 @@ export interface SingleResult {
 
 export interface NestedSubagentCall {
 	toolCallId: string;
-	toolName: "subagents";
+	toolName: "subagent";
 	status: "running" | "completed" | "failed";
-	details?: SubagentsDetails;
+	details?: SubagentDetails;
 	error?: string;
 	truncated?: boolean;
 }
 
-export interface SubagentsDetails {
+export interface SubagentDetails {
 	includeLocationalAgents: boolean;
 	locationalAgents: string[];
 	results: SingleResult[];
 }
 
 export type DisplayItem = { type: "text"; text: string } | { type: "toolCall"; name: string; args: Record<string, any> };
-export type OnUpdateCallback = (partial: AgentToolResult<SubagentsDetails>) => void;
+export type OnUpdateCallback = (partial: AgentToolResult<SubagentDetails>) => void;

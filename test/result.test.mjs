@@ -38,16 +38,16 @@ test("getResultOutput includes warnings, final output, next intent, and errors",
 	assert.equal(getResultOutput({ exitCode: 1, errorMessage: "boom", stderr: "stderr", messages: [] }), "boom");
 });
 
-test("display helpers recognize only singular subagents calls", () => {
+test("display helpers recognize only singular subagent calls", () => {
 	const messages = [assistant([
 		{ type: "text", text: "thinking" },
-		{ type: "toolCall", name: "subagents", arguments: { id: "a", session: "new", task: "work" } },
+		{ type: "toolCall", name: "subagent", arguments: { id: "a", session: "new", task: "work" } },
 		{ type: "toolCall", name: "subprocess", arguments: { id: "legacy" } },
 		{ type: "toolCall", name: "read", arguments: { path: "x" } },
 	])];
 	assert.deepEqual(getDisplayItems(messages), [
 		{ type: "text", text: "thinking" },
-		{ type: "toolCall", name: "subagents", args: { id: "a", session: "new", task: "work" } },
+		{ type: "toolCall", name: "subagent", args: { id: "a", session: "new", task: "work" } },
 		{ type: "toolCall", name: "subprocess", args: { id: "legacy" } },
 		{ type: "toolCall", name: "read", args: { path: "x" } },
 	]);

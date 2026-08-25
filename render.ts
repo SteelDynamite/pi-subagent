@@ -2,7 +2,7 @@ import { Container, Markdown, Spacer, Text } from "@earendil-works/pi-tui";
 import { getMarkdownTheme } from "./pi-compat.ts";
 import { COLLAPSED_ITEM_COUNT, MAX_NESTED_RENDER_DEPTH, MAX_NESTED_RENDER_LINES } from "./constants.ts";
 import { formatUsageStats, getDisplayItems, getFinalOutput, getNestedSubagentIds, isFailedResult } from "./result.ts";
-import type { NestedSubagentCall, SubagentsDetails } from "./types.ts";
+import type { NestedSubagentCall, SubagentDetails } from "./types.ts";
 
 function preview(text: string, max = 120): string { const line = text.replace(/\s+/g, " ").trim(); return line.length > max ? `${line.slice(0, max)}...` : line; }
 
@@ -31,13 +31,13 @@ export function formatNestedSubagentsForDisplay(
 	return lines.join("\n");
 }
 
-export function renderSubagentsCall(args: { id?: string; session?: string; task?: string }, theme: any, _context: any) {
+export function renderSubagentCall(args: { id?: string; session?: string; task?: string }, theme: any, _context: any) {
 	const task = args.task ? preview(args.task, 60) : "...";
-	return new Text(`${theme.fg("toolTitle", theme.bold("subagents "))}${theme.fg("accent", args.id || "...")}${args.session ? theme.fg("muted", ` [session:${args.session}]`) : ""}\n  ${theme.fg("dim", task)}`, 0, 0);
+	return new Text(`${theme.fg("toolTitle", theme.bold("subagent "))}${theme.fg("accent", args.id || "...")}${args.session ? theme.fg("muted", ` [session:${args.session}]`) : ""}\n  ${theme.fg("dim", task)}`, 0, 0);
 }
 
-export function renderSubagentsResult(result: any, { expanded }: { expanded: boolean }, theme: any, _context: any) {
-	const details = result.details as SubagentsDetails | undefined;
+export function renderSubagentResult(result: any, { expanded }: { expanded: boolean }, theme: any, _context: any) {
+	const details = result.details as SubagentDetails | undefined;
 	const agent = details?.results[0];
 	if (!agent) return new Text(result.content?.[0]?.type === "text" ? result.content[0].text : "(no output)", 0, 0);
 	const running = agent.exitCode === -1;

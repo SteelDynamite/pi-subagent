@@ -23,9 +23,9 @@ import {
 import { addContextDocsToTask, getMissingSessionError } from "./params.ts";
 import type { ExtensionAPI, ExtensionContext } from "./pi-compat.ts";
 import { formatBehavioralAgentManifest, formatLocalLocationalPrompt } from "./prompt.ts";
-import { renderSubagentsCall, renderSubagentsResult } from "./render.ts";
+import { renderSubagentCall, renderSubagentResult } from "./render.ts";
 import { getResultOutput, isFailedResult, makeErrorResult } from "./result.ts";
-import { SubagentsParams } from "./schema.ts";
+import { SubagentParams } from "./schema.ts";
 import {
 	getMainSessionKey,
 	persistSubagentState,
@@ -33,11 +33,11 @@ import {
 	subagentSettings,
 	trackedSessions,
 } from "./state.ts";
-import type { OnUpdateCallback, SessionIntent, SingleResult, SubagentsDetails } from "./types.ts";
+import type { OnUpdateCallback, SessionIntent, SingleResult, SubagentDetails } from "./types.ts";
 
 export { getFinalOutput } from "./result.ts";
 
-export type SubagentsToolParams = {
+export type SubagentToolParams = {
 	id?: string;
 	session?: SessionIntent;
 	task?: string;
@@ -120,7 +120,7 @@ export default function (pi: ExtensionAPI) {
 		const parts: string[] = [];
 		const behavioral = formatBehavioralAgentManifest(discovery.agents);
 		if (behavioral) {
-			parts.push(`Behavioral subagents can be delegated to with the subagents tool by id and required session intent ("new" or "resume"). Use session: "new" for a first/fresh call; use session: "resume" only when the previous result for that subagent said to. Behavioral agents run from the caller directory.\n\n${behavioral}`);
+			parts.push(`Behavioral subagents can be delegated to with the subagent tool by id and required session intent ("new" or "resume"). Use session: "new" for a first/fresh call; use session: "resume" only when the previous result for that subagent said to. Behavioral agents run from the caller directory.\n\n${behavioral}`);
 		}
 		const locational = makeLocationalManifest(discovery.locationalAgents);
 		if (locational) parts.push(locational.content);
@@ -137,7 +137,7 @@ export default function (pi: ExtensionAPI) {
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName === "subagents") return;
+		if (event.toolName === "subagent") return;
 		const roots = getGuardedLocationalRoots(ctx.cwd);
 		if (!roots.length) return;
 		const input = (event.input ?? {}) as Record<string, unknown>;
@@ -159,20 +159,20 @@ export default function (pi: ExtensionAPI) {
 			const root = roots.find((item) => isPathInside(candidate, item));
 			if (!root) continue;
 			notifyLocationalBoundaryDiscovered(ctx, root);
-			return { block: true, reason: `Locational boundary enforced: delegate to subagents locational agent id "${root}" instead of accessing it directly.` };
+			return { block: true, reason: `Locational boundary enforced: delegate with subagent using locational agent id "${root}" instead of accessing it directly.` };
 		}
 	});
 
 	pi.registerTool({
-		name: "subagents",
-		label: "Subagents",
+		name: "subagent",
+		label: "Subagent",
 		description: "Delegate exactly one task to an isolated behavioral or locational Pi agent and wait for its result. Requires id, session, and task. Behavioral agents inherit the caller directory. Locational agents use a caller-relative or absolute source-root id containing SUBAGENTS.md and run from that root. Behavioral children discover no locational agents unless includeLocationalAgents is true.",
 		promptSnippet: "Delegate one foreground-managed task to an isolated behavioral or locational Pi agent and wait for its result",
-		parameters: SubagentsParams,
-		async execute(_toolCallId: string, params: SubagentsToolParams, signal: AbortSignal | undefined, onUpdate: OnUpdateCallback | undefined, ctx: ExtensionContext) {
+		parameters: SubagentParams,
+		async execute(_toolCallId: string, params: SubagentToolParams, signal: AbortSignal | undefined, onUpdate: OnUpdateCallback | undefined, ctx: ExtensionContext) {
 			const trusted = ctx.isProjectTrusted();
 			const discovery = discoverAgents(ctx.cwd, trusted);
-			const makeDetails = (results: SingleResult[]): SubagentsDetails => ({
+			const makeDetails = (results: SingleResult[]): SubagentDetails => ({
 				includeLocationalAgents: params.includeLocationalAgents ?? false,
 				locationalAgents: discovery.locationalAgents.map((agent) => agent.id),
 				results,
@@ -215,7 +215,7 @@ export default function (pi: ExtensionAPI) {
 			}
 			return { content: [{ type: "text", text: getResultOutput(result) }], details: makeDetails([result]) };
 		},
-		renderCall: renderSubagentsCall,
-		renderResult: renderSubagentsResult,
+		renderCall: renderSubagentCall,
+		renderResult: renderSubagentResult,
 	});
 }

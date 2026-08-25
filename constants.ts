@@ -22,5 +22,5 @@ export const DEFAULT_KNOWN_TOOLS = new Set([
 	"grep",
 	"rg",
 	"todo",
-	"subagents",
+	"subagent",
 ]);

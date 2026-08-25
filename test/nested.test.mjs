@@ -27,23 +27,23 @@ function assistantText(text) {
 	return { role: "assistant", content: [{ type: "text", text }] };
 }
 
-test("processChildJsonEvent tracks nested subagents by toolCallId", () => {
+test("processChildJsonEvent tracks nested subagent calls by toolCallId", () => {
 	const owner = result();
 	let updates = 0;
 	const emitUpdate = () => updates++;
-	processChildJsonEvent({ type: "tool_execution_start", toolCallId: "call-1", toolName: "subagents", args: {} }, owner, emitUpdate);
+	processChildJsonEvent({ type: "tool_execution_start", toolCallId: "call-1", toolName: "subagent", args: {} }, owner, emitUpdate);
 	assert.equal(owner.nestedSubagents[0].status, "running");
 	processChildJsonEvent({
 		type: "tool_execution_update",
 		toolCallId: "call-1",
-		toolName: "subagents",
+		toolName: "subagent",
 		partialResult: { details: details([result({ agent: "nested-a", exitCode: -1 })]) },
 	}, owner, emitUpdate);
 	assert.equal(owner.nestedSubagents[0].details.results[0].agent, "nested-a");
 	processChildJsonEvent({
 		type: "tool_execution_end",
 		toolCallId: "call-1",
-		toolName: "subagents",
+		toolName: "subagent",
 		result: { details: details([result({ agent: "nested-a", messages: [assistantText("done")] })]) },
 		isError: false,
 	}, owner, emitUpdate);
@@ -54,9 +54,9 @@ test("processChildJsonEvent tracks nested subagents by toolCallId", () => {
 
 test("interleaved nested updates stay separated", () => {
 	const owner = result();
-	for (const id of ["a", "b"]) processChildJsonEvent({ type: "tool_execution_start", toolCallId: id, toolName: "subagents", args: {} }, owner, () => {});
-	processChildJsonEvent({ type: "tool_execution_update", toolCallId: "b", toolName: "subagents", partialResult: { details: details([result({ agent: "beta" })]) } }, owner, () => {});
-	processChildJsonEvent({ type: "tool_execution_update", toolCallId: "a", toolName: "subagents", partialResult: { details: details([result({ agent: "alpha" })]) } }, owner, () => {});
+	for (const id of ["a", "b"]) processChildJsonEvent({ type: "tool_execution_start", toolCallId: id, toolName: "subagent", args: {} }, owner, () => {});
+	processChildJsonEvent({ type: "tool_execution_update", toolCallId: "b", toolName: "subagent", partialResult: { details: details([result({ agent: "beta" })]) } }, owner, () => {});
+	processChildJsonEvent({ type: "tool_execution_update", toolCallId: "a", toolName: "subagent", partialResult: { details: details([result({ agent: "alpha" })]) } }, owner, () => {});
 	assert.equal(owner.nestedSubagents.find((call) => call.toolCallId === "a").details.results[0].agent, "alpha");
 	assert.equal(owner.nestedSubagents.find((call) => call.toolCallId === "b").details.results[0].agent, "beta");
 });
@@ -64,6 +64,7 @@ test("interleaved nested updates stay separated", () => {
 test("unrelated and legacy tool events are ignored", () => {
 	const owner = result();
 	assert.equal(applyNestedSubagentEvent(owner, { type: "tool_execution_start", toolCallId: "read-1", toolName: "read" }), false);
+	assert.equal(applyNestedSubagentEvent(owner, { type: "tool_execution_start", toolCallId: "plural-1", toolName: "subagents" }), false);
 	assert.equal(applyNestedSubagentEvent(owner, { type: "tool_execution_start", toolCallId: "old-1", toolName: "subprocess" }), false);
 	assert.equal(owner.nestedSubagents, undefined);
 });
@@ -74,7 +75,7 @@ test("large nested details are conservatively capped", () => {
 	applyNestedSubagentEvent(owner, {
 		type: "tool_execution_update",
 		toolCallId: "large",
-		toolName: "subagents",
+		toolName: "subagent",
 		partialResult: { details: details([result({ agent: "large", task: huge, messages: [assistantText(huge)] })]) },
 	});
 	const nested = owner.nestedSubagents[0];
@@ -86,21 +87,21 @@ test("large nested details are conservatively capped", () => {
 test("nested formatter renders recursive indented details", () => {
 	const nested = [{
 		toolCallId: "outer-call",
-		toolName: "subagents",
+		toolName: "subagent",
 		status: "completed",
 		details: details([result({
 			agent: "outer-nested",
 			messages: [assistantText("outer done")],
 			nestedSubagents: [{
 				toolCallId: "inner-call",
-				toolName: "subagents",
+				toolName: "subagent",
 				status: "running",
 				details: details([result({ agent: "inner", exitCode: -1 })]),
 			}],
 		})]),
 	}];
 	const text = formatNestedSubagentsForDisplay(nested);
-	assert.match(text, /subagents/);
+	assert.match(text, /subagent/);
 	assert.match(text, /outer-nested/);
 	assert.match(text, /inner/);
 	assert.match(text, /↳/);

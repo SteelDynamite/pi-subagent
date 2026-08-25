@@ -31,7 +31,7 @@ export function formatLocationalAgentManifest(agents: AgentConfig[]): string {
 	return [
 		"## Available locational agents",
 		"",
-		`Each path below is both a locational agent's source root and full ${inlineCode("subagents")} id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.`,
+		`Each path below is both a locational agent's source root and full ${inlineCode("subagent")} id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.`,
 		"",
 		visible.map((agent) => `- ${inlineCode(agent.id)}: ${escapeMarkdown(agent.description || "No responsibility description.")}`).join("\n"),
 	].join("\n");

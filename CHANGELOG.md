@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Renamed the repository, package, and extension to `pi-subagent`, and the public tool to `subagents`, as a hard break.
+- Renamed the repository, package, and extension to `pi-subagent`, and the public tool to `subagent`, as a hard break.
 - Reduced each tool call to one behavioral or locational agent with explicit session intent.
 - Removed shell-command, batch, chain, scope, compatibility-alias, and behavioral-cwd inputs; built-in `bash` owns commands.
 - Added implicit bundled/user/trusted-project behavioral precedence and trusted locational discovery.

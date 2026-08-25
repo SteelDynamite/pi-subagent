@@ -20,7 +20,7 @@ test("package exposes only the parent-owned implement workflow", () => {
 	assert.match(prompt, /explicitly requested review/);
 
 	const source = readFileSync(new URL("index.ts", root), "utf8");
-	assert.doesNotMatch(source, /name: ["']subprocess["']|registerCommand\(["'](?:subprocess|subagents)-settings/);
+	assert.doesNotMatch(source, /name: ["'](?:subprocess|subagents)["']|registerCommand\(["'](?:subprocess|subagents)-settings/);
 	assert.doesNotMatch(source, /handoffDocs|agentScope|confirmProjectAgents/);
 
 	const extensionSource = readdirSync(root)
@@ -28,5 +28,5 @@ test("package exposes only the parent-owned implement workflow", () => {
 		.map((file) => readFileSync(new URL(file, root), "utf8"))
 		.join("\n");
 	assert.doesNotMatch(extensionSource, /pi-subagents|PI_SUBAGENTS|["']subagents-(?:settings|state)["']/);
-	assert.match(extensionSource, /name: "subagents"/);
+	assert.match(extensionSource, /name: "subagent"/);
 });

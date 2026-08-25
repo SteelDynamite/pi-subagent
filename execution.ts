@@ -27,7 +27,7 @@ import {
 	subagentSettings,
 	updateTrackedSession,
 } from "./state.ts";
-import type { OnUpdateCallback, SessionIntent, SingleResult, SubagentsDetails } from "./types.ts";
+import type { OnUpdateCallback, SessionIntent, SingleResult, SubagentDetails } from "./types.ts";
 
 let knownToolNames = new Set(DEFAULT_KNOWN_TOOLS);
 
@@ -196,7 +196,7 @@ export async function runDelegation(
 	task: string,
 	signal: AbortSignal | undefined,
 	onUpdate: OnUpdateCallback | undefined,
-	makeDetails: (results: SingleResult[]) => SubagentsDetails,
+	makeDetails: (results: SingleResult[]) => SubagentDetails,
 	includeLocationalAgentsInBehavioralChild: boolean,
 ): Promise<SingleResult> {
 	const agent = resolveAgent(defaultCwd, agents, agentId);

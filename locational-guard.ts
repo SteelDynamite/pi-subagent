@@ -13,7 +13,7 @@ export function notifyLocationalBoundaryDiscovered(ctx: ExtensionContext, root: 
 	const key = `${path.resolve(ctx.cwd)}\0${path.resolve(root)}`;
 	if (notifiedLocationalBoundaryKeys.has(key)) return;
 	notifiedLocationalBoundaryKeys.add(key);
-	ctx.ui.notify(`Locational boundary discovered: delegate to subagents locational agent id "${root}"`, "info");
+	ctx.ui.notify(`Locational boundary discovered: delegate with subagent using locational agent id "${root}"`, "info");
 }
 
 export function canonicalPath(value: string): string {

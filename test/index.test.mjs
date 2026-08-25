@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import subagentExtension from "../index.ts";
-import { SubagentsParams } from "../schema.ts";
+import { SubagentParams } from "../schema.ts";
 
 function registerExtension() {
 	const handlers = new Map();
@@ -21,15 +21,18 @@ function registerExtension() {
 	return { pi, handlers, commands, tools };
 }
 
-test("extension registers singular settings and the public subagents tool", () => {
+test("extension registers singular settings and the public subagent tool", () => {
 	const { commands, tools } = registerExtension();
-	assert.deepEqual(tools.map((tool) => tool.name), ["subagents"]);
+	assert.deepEqual(tools.map((tool) => tool.name), ["subagent"]);
+	assert.equal(tools[0].label, "Subagent");
+	const theme = { fg: (_color, text) => text, bold: (text) => text };
+	assert.match(tools[0].renderCall({ id: "scout", session: "new", task: "inspect" }, theme, {}).render(120).join("\n"), /^subagent scout/);
 	assert.deepEqual([...commands.keys()], ["subagent-settings"]);
-	assert.deepEqual(Object.keys(SubagentsParams.properties).sort(), ["contextDocs", "id", "includeLocationalAgents", "session", "task"]);
-	assert.deepEqual([...SubagentsParams.required].sort(), ["id", "session", "task"]);
-	assert.equal(SubagentsParams.additionalProperties, false);
+	assert.deepEqual(Object.keys(SubagentParams.properties).sort(), ["contextDocs", "id", "includeLocationalAgents", "session", "task"]);
+	assert.deepEqual([...SubagentParams.required].sort(), ["id", "session", "task"]);
+	assert.equal(SubagentParams.additionalProperties, false);
 	for (const removed of ["commands", "tasks", "chain", "cwd", "handoffDocs", "agentScope", "confirmProjectAgents"]) {
-		assert.equal(SubagentsParams.properties[removed], undefined);
+		assert.equal(SubagentParams.properties[removed], undefined);
 	}
 });
 
@@ -48,7 +51,7 @@ test("built-in bash path arguments remain subject to locational boundaries", asy
 			hasUI: false,
 		});
 		assert.equal(result.block, true);
-		assert.match(result.reason, /delegate to subagents locational agent/);
+		assert.match(result.reason, /delegate with subagent using locational agent/);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

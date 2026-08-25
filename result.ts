@@ -61,7 +61,7 @@ export function getDisplayItems(messages: Message[]): DisplayItem[] {
 
 export function getNestedSubagentIds(messages: Message[]): string[] {
 	return getDisplayItems(messages)
-		.filter((item): item is Extract<DisplayItem, { type: "toolCall" }> => item.type === "toolCall" && item.name === "subagents")
+		.filter((item): item is Extract<DisplayItem, { type: "toolCall" }> => item.type === "toolCall" && item.name === "subagent")
 		.flatMap((item) => typeof item.args.id === "string" ? [item.args.id] : []);
 }
 

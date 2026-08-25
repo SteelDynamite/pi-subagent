@@ -5,7 +5,7 @@ export const SessionIntentSchema = StringEnum(["new", "resume"] as const, {
 	description: 'Required session intent. Use "new" for first/fresh calls and "resume" only when the previous result said so.',
 });
 
-export const SubagentsParams = Type.Object({
+export const SubagentParams = Type.Object({
 	id: Type.String({ description: "Behavioral or locational agent id to invoke" }),
 	session: SessionIntentSchema,
 	task: Type.String({ description: "Task to delegate to the agent" }),

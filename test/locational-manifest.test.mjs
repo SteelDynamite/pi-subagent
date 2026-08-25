@@ -54,7 +54,7 @@ test("locational manifest uses the singular extension state identifier and visib
 	assert.deepEqual(manifest, {
 		content: `## Available locational agents
 
-Each path below is both a locational agent's source root and full \`subagents\` id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.
+Each path below is both a locational agent's source root and full \`subagent\` id. Work inside listed roots must be delegated to the corresponding agent rather than accessed directly.
 
 - \`/project/packages/owned\`: Owns this source.
 - \`/project/packages/other\`: Owns other source.`,
@@ -217,7 +217,7 @@ test("manifest renderer has identical collapsed and expanded content", () => {
 	const expanded = renderLocationalManifest(entry, { expanded: true }, theme).render(120).join("\n");
 	assert.equal(expanded, collapsed);
 	assert.match(collapsed, /Available locational agents/);
-	assert.match(collapsed, /full subagents id/);
+	assert.match(collapsed, /full subagent id/);
 	assert.match(collapsed, /- \/project\/owned: Owns it\./);
 	assert.ok(foregrounds.includes("customMessageText"));
 	assert.ok(backgrounds.every((color) => color === "customMessageBg"));

@@ -1,6 +1,6 @@
 # Pi Subagent
 
-Foreground-managed behavioral and locational Pi-agent delegation. Each `subagents` call runs one isolated Pi child and returns its result; built-in `bash` owns shell execution.
+Foreground-managed behavioral and locational Pi-agent delegation. Each `subagent` call runs one isolated Pi child and returns its result; built-in `bash` owns shell execution.
 
 ## Features
 
@@ -27,7 +27,7 @@ ln -sf "$(pwd)/prompts/implement.md" ~/.pi/agent/prompts/implement.md
 
 ## Tool
 
-`subagents` accepts exactly:
+`subagent` accepts exactly:
 
 ```json
 {
@@ -41,7 +41,7 @@ ln -sf "$(pwd)/prompts/implement.md" ~/.pi/agent/prompts/implement.md
 
 `id`, `session`, and `task` are required. `contextDocs` and `includeLocationalAgents` are optional. Use `resume` only when the prior result requests it. Behavioral agents inherit the caller directory; locational-agent ids are absolute or caller-relative folders containing `SUBAGENTS.md` and run from that source root.
 
-Use ordinary `bash` calls for shell commands and sibling/later `subagents` calls for concurrent/sequential delegation.
+Use ordinary `bash` calls for shell commands and sibling/later `subagent` calls for concurrent/sequential delegation.
 
 ## Discovery and safety
 
