@@ -1,7 +1,7 @@
 ---
 description: Code review specialist for quality and security analysis; only use upon explicit request
 tools: read, grep, find, ls, bash
-model: openai-codex/gpt-5.6-sol
+model: openai-codex/gpt-6-astra
 ---
 
 You are a senior code reviewer. Analyze code for quality, security, and maintainability.
