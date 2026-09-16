@@ -18,6 +18,7 @@ export interface AgentConfig {
 	systemPrompt: string;
 	origin: AgentOrigin;
 	kind: AgentKind;
+	overrides?: boolean;
 	filePath: string;
 	rootDir: string;
 	resumable: boolean;
@@ -191,7 +192,9 @@ export function discoverAgents(cwd: string, trustedProject: boolean, options: { 
 	const project = projectAgentsDir ? loadBehavioralAgentsFromDir(projectAgentsDir, "project") : { agents: [], errors: [] };
 	const locational = trustedProject && options.includeLocationalAgents !== false ? scanLocationalAgents(cwd) : { agents: [], errors: [] };
 	const behavioral = new Map<string, AgentConfig>();
-	for (const agent of [...bundled.agents, ...user.agents, ...project.agents]) behavioral.set(agent.id, agent);
+	for (const agent of [...bundled.agents, ...user.agents, ...project.agents]) {
+		behavioral.set(agent.id, { ...agent, overrides: behavioral.has(agent.id) });
+	}
 	return { agents: [...behavioral.values(), ...locational.agents], projectAgentsDir, locationalAgents: locational.agents, errors: [...bundled.errors, ...user.errors, ...project.errors, ...locational.errors] };
 }
 

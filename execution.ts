@@ -215,6 +215,8 @@ export async function runDelegation(
 	if (session !== required.intent) {
 		return makeErrorResult(agent.id, task, formatWrongIntentReason(agent, session, required.intent, required.reason), session, {
 			agentOrigin: agent.origin,
+			agentOverride: agent.overrides,
+			agentThinking: agent.thinking,
 			wrongSessionIntent: {
 				agentId: agent.id,
 				requested: session,
@@ -241,6 +243,8 @@ export async function runDelegation(
 		const result: SingleResult = {
 			agent: agent.id,
 			agentOrigin: agent.origin,
+			agentOverride: agent.overrides,
+			agentThinking: agent.thinking,
 			sessionIntent: session,
 			task,
 			exitCode: -1,

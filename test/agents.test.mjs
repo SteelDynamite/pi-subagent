@@ -103,13 +103,40 @@ test("behavioral discovery precedence is bundled, user, then trusted project", (
 
 		const untrusted = discoverAgents(root, false, { includeLocationalAgents: false });
 		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").description, "User scout");
+		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").overrides, true);
 		assert.equal(untrusted.projectAgentsDir, null);
 
 		const trusted = discoverAgents(root, true, { includeLocationalAgents: false });
 		assert.equal(trusted.agents.find((agent) => agent.id === "scout").description, "Project scout");
 		assert.equal(trusted.agents.find((agent) => agent.id === "scout").thinking, "medium");
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").overrides, true);
 		assert.equal(trusted.projectAgentsDir, join(root, ".pi", "agents"));
 		assert.deepEqual(trusted.agents.map((agent) => agent.id).sort(), ["reviewer", "scout", "worker"]);
+	} finally {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previous;
+		rmSync(root, { recursive: true, force: true });
+		rmSync(agentDir, { recursive: true, force: true });
+	}
+});
+
+test("custom behavioral and ordinary locational definitions are not overrides", () => {
+	const root = tempDir();
+	const agentDir = tempDir();
+	const previous = process.env.PI_CODING_AGENT_DIR;
+	try {
+		mkdirSync(join(agentDir, "agents", "custom-user"), { recursive: true });
+		writeFileSync(join(agentDir, "agents", "custom-user", "SUBAGENTS.md"), "---\ndescription: Custom user\n---\n");
+		mkdirSync(join(root, ".pi", "agents", "custom-project"), { recursive: true });
+		writeFileSync(join(root, ".pi", "agents", "custom-project", "SUBAGENTS.md"), "---\ndescription: Custom project\n---\n");
+		const owned = join(root, "owned");
+		mkdirSync(owned);
+		writeFileSync(join(owned, "SUBAGENTS.md"), "---\ndescription: Owned\n---\n");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const discovered = discoverAgents(root, true);
+		assert.equal(discovered.agents.find((agent) => agent.id === "custom-user").overrides, false);
+		assert.equal(discovered.agents.find((agent) => agent.id === "custom-project").overrides, false);
+		assert.notEqual(discovered.locationalAgents.find((agent) => agent.id === owned).overrides, true);
 	} finally {
 		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
 		else process.env.PI_CODING_AGENT_DIR = previous;

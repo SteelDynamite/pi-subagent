@@ -1,6 +1,6 @@
 import type { AgentToolResult } from "@earendil-works/pi-agent-core";
 import type { Message } from "@earendil-works/pi-ai";
-import type { AgentOrigin } from "./agents.ts";
+import type { AgentOrigin, ThinkingLevel } from "./agents.ts";
 
 export type SessionIntent = "new" | "resume";
 export type NextIntentReason = "none" | "under-threshold" | "over-threshold" | "reuse-disabled" | "non-resumable";
@@ -46,6 +46,8 @@ export interface WrongSessionIntentError {
 export interface SingleResult {
 	agent: string;
 	agentOrigin: AgentOrigin | "unknown";
+	agentOverride?: boolean;
+	agentThinking?: ThinkingLevel;
 	sessionIntent?: SessionIntent;
 	wrongSessionIntent?: WrongSessionIntentError;
 	task: string;

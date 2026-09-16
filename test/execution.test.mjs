@@ -232,6 +232,7 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 			return index < 0 ? undefined : args[index + 1];
 		});
 		assert.deepEqual(thinking, ["high", "high", "low", "low", undefined]);
+		assert.ok(calls.every(({ args }) => args.slice(0, 3).join(" ") === "--mode json -p" && !args.includes("--rpc")));
 		assert.ok(calls.slice(0, 4).every(({ args }) => args.includes("--session-id")));
 		assert.ok(calls[4].args.includes("--no-session"));
 	} finally {
