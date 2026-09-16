@@ -3,7 +3,7 @@ import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { discoverAgents, isPathInside, loadLocationalAgent, resolveLocationalAgentId, scanLocationalAgents } from "../agents.ts";
+import { THINKING_LEVELS, discoverAgents, isPathInside, loadLocationalAgent, resolveLocationalAgentId, scanLocationalAgents } from "../agents.ts";
 
 function tempDir() {
 	return mkdtempSync(join(tmpdir(), "pi-subagent-agents-test-"));
@@ -13,14 +13,48 @@ test("loadLocationalAgent parses frontmatter, defaults, and same-root @includes"
 	const root = tempDir();
 	try {
 		writeFileSync(join(root, "extra.md"), "included body");
-		writeFileSync(join(root, "SUBAGENTS.md"), "---\ndescription: Test\ntools: read, bash\nmanifest: false\nresumable: no\n---\n@extra.md\n");
+		writeFileSync(join(root, "SUBAGENTS.md"), "---\ndescription: Test\ntools: read, bash\nthinking: high\nmanifest: false\nresumable: no\n---\n@extra.md\n");
 		const { agent, error } = loadLocationalAgent(root, { readBody: true });
 		assert.equal(error, undefined);
 		assert.equal(agent.description, "Test");
 		assert.deepEqual(agent.tools, ["read", "bash"]);
+		assert.equal(agent.thinking, "high");
 		assert.equal(agent.manifest, false);
 		assert.equal(agent.resumable, false);
 		assert.equal(agent.systemPrompt, "included body");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("agent definitions validate thinking for locational and behavioral agents", () => {
+	const root = tempDir();
+	try {
+		writeFileSync(join(root, "SUBAGENTS.md"), "---\nthinking: deepest\n---\n");
+		const locational = loadLocationalAgent(root, { readBody: true });
+		assert.equal(locational.agent, undefined);
+		assert.match(locational.error, /unsupported thinking level "deepest"/);
+
+		const behavioralRoot = join(root, ".pi", "agents", "thinker");
+		mkdirSync(behavioralRoot, { recursive: true });
+		writeFileSync(join(behavioralRoot, "SUBAGENTS.md"), "---\nthinking: deepest\n---\n");
+		const behavioral = discoverAgents(root, true, { includeLocationalAgents: false });
+		assert.equal(behavioral.agents.some((agent) => agent.id === "thinker"), false);
+		assert.match(behavioral.errors.join("\n"), /unsupported thinking level "deepest"/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("loadLocationalAgent accepts every supported thinking level", () => {
+	const root = tempDir();
+	try {
+		for (const thinking of THINKING_LEVELS) {
+			writeFileSync(join(root, "SUBAGENTS.md"), `---\nthinking: ${thinking}\n---\n`);
+			const { agent, error } = loadLocationalAgent(root, { readBody: true });
+			assert.equal(error, undefined);
+			assert.equal(agent.thinking, thinking);
+		}
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -64,7 +98,7 @@ test("behavioral discovery precedence is bundled, user, then trusted project", (
 		mkdirSync(join(agentDir, "agents", "scout"), { recursive: true });
 		writeFileSync(join(agentDir, "agents", "scout", "SUBAGENTS.md"), "---\ndescription: User scout\n---\nUser\n");
 		mkdirSync(join(root, ".pi", "agents", "scout"), { recursive: true });
-		writeFileSync(join(root, ".pi", "agents", "scout", "SUBAGENTS.md"), "---\ndescription: Project scout\n---\nProject\n");
+		writeFileSync(join(root, ".pi", "agents", "scout", "SUBAGENTS.md"), "---\ndescription: Project scout\nthinking: medium\n---\nProject\n");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
 
 		const untrusted = discoverAgents(root, false, { includeLocationalAgents: false });
@@ -73,6 +107,7 @@ test("behavioral discovery precedence is bundled, user, then trusted project", (
 
 		const trusted = discoverAgents(root, true, { includeLocationalAgents: false });
 		assert.equal(trusted.agents.find((agent) => agent.id === "scout").description, "Project scout");
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").thinking, "medium");
 		assert.equal(trusted.projectAgentsDir, join(root, ".pi", "agents"));
 		assert.deepEqual(trusted.agents.map((agent) => agent.id).sort(), ["reviewer", "scout", "worker"]);
 	} finally {

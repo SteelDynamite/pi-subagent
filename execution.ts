@@ -236,6 +236,7 @@ export async function runDelegation(
 		if (sessionId) args.push("--session-id", sessionId);
 		else args.push("--no-session");
 		if (model.model) args.push("--model", model.model);
+		if (agent.thinking) args.push("--thinking", agent.thinking);
 		if (agent.tools?.length) args.push("--tools", agent.tools.join(","));
 		const result: SingleResult = {
 			agent: agent.id,

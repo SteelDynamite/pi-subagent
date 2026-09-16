@@ -5,12 +5,15 @@ import { getAgentDir, parseFrontmatter } from "./pi-compat.ts";
 
 export type AgentOrigin = "bundled" | "user" | "project" | "locational";
 export type AgentKind = "behavioral" | "locational";
+export const THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
+export type ThinkingLevel = typeof THINKING_LEVELS[number];
 
 export interface AgentConfig {
 	id: string;
 	description: string;
 	tools?: string[];
 	model?: string;
+	thinking?: ThinkingLevel;
 	manifest: boolean;
 	systemPrompt: string;
 	origin: AgentOrigin;
@@ -30,7 +33,7 @@ export interface AgentDiscoveryResult {
 const SUBAGENTS_FILE = "SUBAGENTS.md";
 const DEFAULT_LOCATIONAL_SCAN_MAX_DEPTH = 6;
 const DEFAULT_LOCATIONAL_SCAN_TIMEOUT_MS = 500;
-const ALLOWED_FRONTMATTER_KEYS = new Set(["description", "tools", "model", "manifest", "resumable"]);
+const ALLOWED_FRONTMATTER_KEYS = new Set(["description", "tools", "model", "thinking", "manifest", "resumable"]);
 const SKIP_LOCATIONAL_SCAN_DIRS = new Set([".git", ".hg", ".svn", ".pi", "node_modules", "dist", "build", "out", ".next", ".nuxt", ".svelte-kit", "coverage", ".cache", ".turbo", ".parcel-cache", "target", "vendor", "Library", "Temp", "Logs", "obj", "bin"]);
 const DEFAULT_LOCATIONAL_PROMPT = `You are a locational subagent. This directory is your source root.
 
@@ -62,6 +65,11 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
 	if (["false", "no", "0", "off"].includes(normalized)) return false;
 	if (["true", "yes", "1", "on"].includes(normalized)) return true;
 	return fallback;
+}
+
+function parseThinking(value: unknown): ThinkingLevel | undefined {
+	if (typeof value !== "string") return undefined;
+	return THINKING_LEVELS.find((level) => level === value);
 }
 
 function resolveAtIncludes(body: string, baseDir: string): string {
@@ -103,9 +111,11 @@ function loadInstructions(filePath: string, id: string, origin: AgentOrigin, kin
 	const { frontmatter, body } = parseFrontmatter<Record<string, unknown>>(content);
 	const unknown = Object.keys(frontmatter).filter((key) => !ALLOWED_FRONTMATTER_KEYS.has(key));
 	if (unknown.length) return { error: `${filePath}: unsupported frontmatter field(s): ${unknown.join(", ")}` };
+	const thinking = parseThinking(frontmatter.thinking);
+	if (frontmatter.thinking !== undefined && !thinking) return { error: `${filePath}: unsupported thinking level "${String(frontmatter.thinking)}". Expected one of: ${THINKING_LEVELS.join(", ")}` };
 	const rootDir = options.rootDir ?? path.dirname(filePath);
 	const rawBody = options.readBody ? resolveAtIncludes(body, rootDir).trim() : "";
-	return { agent: { id, description: frontmatter.description === undefined ? "" : String(frontmatter.description), tools: parseTools(frontmatter.tools), model: frontmatter.model === undefined ? undefined : String(frontmatter.model), manifest: parseBoolean(frontmatter.manifest, true), resumable: parseBoolean(frontmatter.resumable, kind === "locational"), systemPrompt: rawBody || (kind === "locational" ? DEFAULT_LOCATIONAL_PROMPT : ""), origin, kind, filePath, rootDir } };
+	return { agent: { id, description: frontmatter.description === undefined ? "" : String(frontmatter.description), tools: parseTools(frontmatter.tools), model: frontmatter.model === undefined ? undefined : String(frontmatter.model), thinking, manifest: parseBoolean(frontmatter.manifest, true), resumable: parseBoolean(frontmatter.resumable, kind === "locational"), systemPrompt: rawBody || (kind === "locational" ? DEFAULT_LOCATIONAL_PROMPT : ""), origin, kind, filePath, rootDir } };
 }
 
 function loadBehavioralAgentsFromDir(dir: string, origin: "bundled" | "user" | "project"): { agents: AgentConfig[]; errors: string[] } {

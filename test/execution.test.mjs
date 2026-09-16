@@ -18,6 +18,7 @@ import {
 	runDelegation,
 	shouldRetryPreferredModelFailure,
 } from "../execution.ts";
+import { subagentSettings, trackedSessions } from "../state.ts";
 
 function agent(kind) {
 	return {
@@ -186,6 +187,59 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 		else process.env.PI_SUBAGENT_TEST_STATE_FILE = originalState;
 		if (originalLegacyMarker === undefined) delete process.env.PI_SUBPROCESS_CHILD;
 		else process.env.PI_SUBPROCESS_CHILD = originalLegacyMarker;
+		process.argv[1] = originalArgv;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("runDelegation forwards definition thinking for new and resumed behavioral and locational children", async () => {
+	const root = mkdtempSync(join(tmpdir(), "pi-subagent-thinking-"));
+	const originalArgv = process.argv[1];
+	const originalState = process.env.PI_SUBAGENT_TEST_STATE_FILE;
+	const originalReuseEnabled = subagentSettings.reuseEnabled;
+	const originalTrackedSessions = new Map(trackedSessions);
+	try {
+		trackedSessions.clear();
+		subagentSettings.reuseEnabled = true;
+		const stateFile = join(root, "state.json");
+		writeFileSync(stateFile, "[]");
+		const piPath = join(root, "fake-pi.cjs");
+		writeFileSync(piPath, `
+const fs = require("node:fs");
+const calls = JSON.parse(fs.readFileSync(process.env.PI_SUBAGENT_TEST_STATE_FILE, "utf8"));
+calls.push({ args: process.argv.slice(2) });
+fs.writeFileSync(process.env.PI_SUBAGENT_TEST_STATE_FILE, JSON.stringify(calls));
+console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }));
+`);
+		process.argv[1] = piPath;
+		process.env.PI_SUBAGENT_TEST_STATE_FILE = stateFile;
+		const ctx = delegationContext(root, []);
+		const behavioral = { ...agent("behavioral"), id: "behavioral-thinking", rootDir: root, resumable: true, thinking: "high" };
+		const locationalRoot = join(root, "locational-thinking");
+		mkdirSync(locationalRoot);
+		writeFileSync(join(locationalRoot, "SUBAGENTS.md"), "---\nthinking: low\n---\n");
+
+		for (const [id, session] of [[behavioral.id, "new"], [behavioral.id, "resume"], [locationalRoot, "new"], [locationalRoot, "resume"]]) {
+			const result = await runDelegation({ appendEntry: () => undefined }, ctx, root, [behavioral], id, session, "Thinking test", undefined, undefined, details, false);
+			assert.equal(result.exitCode, 0);
+		}
+		const omitted = await runDelegation({ appendEntry: () => undefined }, ctx, root, [{ ...agent("behavioral"), id: "no-thinking", rootDir: root }], "no-thinking", "new", "No thinking test", undefined, undefined, details, false);
+		assert.equal(omitted.exitCode, 0);
+
+		const calls = JSON.parse(readFileSync(stateFile, "utf8"));
+		const thinking = calls.map(({ args }) => {
+			const index = args.indexOf("--thinking");
+			return index < 0 ? undefined : args[index + 1];
+		});
+		assert.deepEqual(thinking, ["high", "high", "low", "low", undefined]);
+		assert.ok(calls.slice(0, 4).every(({ args }) => args.includes("--session-id")));
+		assert.ok(calls[4].args.includes("--no-session"));
+	} finally {
+		trackedSessions.clear();
+		for (const [key, value] of originalTrackedSessions) trackedSessions.set(key, value);
+		subagentSettings.reuseEnabled = originalReuseEnabled;
+		if (originalState === undefined) delete process.env.PI_SUBAGENT_TEST_STATE_FILE;
+		else process.env.PI_SUBAGENT_TEST_STATE_FILE = originalState;
 		process.argv[1] = originalArgv;
 		rmSync(root, { recursive: true, force: true });
 	}

@@ -43,6 +43,19 @@ ln -sf "$(pwd)/prompts/implement.md" ~/.pi/agent/prompts/implement.md
 
 Use ordinary `bash` calls for shell commands and sibling/later `subagent` calls for concurrent/sequential delegation.
 
+## Agent definitions
+
+Behavioral agent directories and locational roots both use `SUBAGENTS.md`. Definitions may set a fixed Pi thinking default:
+
+```yaml
+---
+description: Investigates code.
+thinking: high
+---
+```
+
+`thinking` accepts `off`, `minimal`, `low`, `medium`, `high`, `xhigh`, or `max`. When declared, every new and resumed child receives `--thinking <level>`, overriding that child's startup and saved-session setting. Omit it to preserve Pi's existing child defaults. Callers cannot override it through `subagent`; Pi still clamps levels to selected-model support.
+
 ## Discovery and safety
 
 Behavioral definitions resolve from bundled `agents/`, then user `~/.pi/agent/agents/`, then `.pi/agents/` only when Pi reports the project trusted. `SUBAGENTS.md` is authoritative for locational discovery, delegation, and boundaries. Direct access inside a locational root is blocked unless directly authorized for the request; a locational child cannot delegate to its active root or ancestor stack.
