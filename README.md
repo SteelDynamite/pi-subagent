@@ -58,7 +58,7 @@ thinking: high
 
 ## Discovery and safety
 
-Behavioral definitions resolve from bundled `agents/`, then user `~/.pi/agent/agents/`, then `.pi/agents/` only when Pi reports the project trusted. `SUBAGENTS.md` is authoritative for locational discovery, delegation, and boundaries. Direct access inside a locational root is blocked unless directly authorized for the request; a locational child cannot delegate to its active root or ancestor stack.
+Behavioral definitions resolve from bundled `agents/`, then user `~/.pi/agent/agents/`, then one trusted project root. The project root is `cwd/.pi/agents/` when that directory exists (including empty); otherwise it is `cwd/.agents/subagents/`. Ancestors are never searched and roots are not merged. Only the exact `cwd/.agents/subagents/` tree is behavioral-only, not locational; nested directories with that name elsewhere remain eligible locational roots. `SUBAGENTS.md` is authoritative for other locational discovery, delegation, and boundaries. Direct access inside a locational root is blocked unless directly authorized for the request; a locational child cannot delegate to its active root or ancestor stack.
 
 Locational models may declare `model:` candidates or use `PI_SUBAGENT_LOCATIONAL_PREFERRED_MODELS`. If a selected non-caller locational model fails before task work, the child retries once in the same session with the caller model. Context-limit failures are labeled `context_limit`.
 

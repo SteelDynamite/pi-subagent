@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { THINKING_LEVELS, discoverAgents, isPathInside, loadLocationalAgent, resolveLocationalAgentId, scanLocationalAgents } from "../agents.ts";
+import { getGuardedLocationalRoots } from "../locational-guard.ts";
 
 function tempDir() {
 	return mkdtempSync(join(tmpdir(), "pi-subagent-agents-test-"));
@@ -85,6 +86,118 @@ test("scanLocationalAgents finds nested roots, skips node_modules, and resolves 
 		const scan = scanLocationalAgents(root, { maxDepth: 4, timeoutMs: 1000 });
 		assert.deepEqual(scan.agents.map((agent) => realpathSync.native(agent.rootDir)), [realpathSync.native(owned)]);
 		assert.equal(realpathSync.native(resolveLocationalAgentId(root, "owned").rootDir), realpathSync.native(owned));
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("CWD portable project behavioral definitions load only when trusted", () => {
+	const root = tempDir();
+	try {
+		const portable = join(root, ".agents", "subagents", "portable");
+		mkdirSync(portable, { recursive: true });
+		writeFileSync(join(portable, "SUBAGENTS.md"), "---\ndescription: Portable project\n---\n");
+		const trusted = discoverAgents(root, true, { includeLocationalAgents: false });
+		assert.equal(trusted.projectAgentsDir, join(root, ".agents", "subagents"));
+		assert.equal(trusted.agents.find((agent) => agent.id === "portable").description, "Portable project");
+		const untrusted = discoverAgents(root, false, { includeLocationalAgents: false });
+		assert.equal(untrusted.projectAgentsDir, null);
+		assert.equal(untrusted.agents.some((agent) => agent.id === "portable"), false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("project behavioral discovery does not walk ancestors", () => {
+	const legacyRoot = tempDir();
+	const portableRoot = tempDir();
+	try {
+		const legacyCwd = join(legacyRoot, "child");
+		const portableCwd = join(portableRoot, "child");
+		mkdirSync(legacyCwd);
+		mkdirSync(portableCwd);
+		mkdirSync(join(legacyRoot, ".pi", "agents", "ancestor"), { recursive: true });
+		mkdirSync(join(portableRoot, ".agents", "subagents", "ancestor"), { recursive: true });
+		writeFileSync(join(legacyRoot, ".pi", "agents", "ancestor", "SUBAGENTS.md"), "---\ndescription: Ancestor legacy\n---\n");
+		writeFileSync(join(portableRoot, ".agents", "subagents", "ancestor", "SUBAGENTS.md"), "---\ndescription: Ancestor portable\n---\n");
+		assert.equal(discoverAgents(legacyCwd, true, { includeLocationalAgents: false }).projectAgentsDir, null);
+		assert.equal(discoverAgents(portableCwd, true, { includeLocationalAgents: false }).projectAgentsDir, null);
+		assert.equal(discoverAgents(legacyCwd, true, { includeLocationalAgents: false }).agents.some((agent) => agent.id === "ancestor"), false);
+		assert.equal(discoverAgents(portableCwd, true, { includeLocationalAgents: false }).agents.some((agent) => agent.id === "ancestor"), false);
+	} finally {
+		rmSync(legacyRoot, { recursive: true, force: true });
+		rmSync(portableRoot, { recursive: true, force: true });
+	}
+});
+
+test("portable project definitions preserve bundled and user precedence", () => {
+	const root = tempDir();
+	const agentDir = tempDir();
+	const previous = process.env.PI_CODING_AGENT_DIR;
+	try {
+		mkdirSync(join(agentDir, "agents", "scout"), { recursive: true });
+		writeFileSync(join(agentDir, "agents", "scout", "SUBAGENTS.md"), "---\ndescription: User scout\n---\n");
+		mkdirSync(join(root, ".agents", "subagents", "scout"), { recursive: true });
+		writeFileSync(join(root, ".agents", "subagents", "scout", "SUBAGENTS.md"), "---\ndescription: Portable scout\n---\n");
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		assert.equal(discoverAgents(root, false, { includeLocationalAgents: false }).agents.find((agent) => agent.id === "scout").description, "User scout");
+		const trusted = discoverAgents(root, true, { includeLocationalAgents: false });
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").description, "Portable scout");
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").overrides, true);
+	} finally {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previous;
+		rmSync(root, { recursive: true, force: true });
+		rmSync(agentDir, { recursive: true, force: true });
+	}
+});
+
+test("CWD .pi project behavioral definitions are selected", () => {
+	const root = tempDir();
+	try {
+		const legacy = join(root, ".pi", "agents", "legacy");
+		mkdirSync(legacy, { recursive: true });
+		writeFileSync(join(legacy, "SUBAGENTS.md"), "---\ndescription: Legacy project\n---\n");
+		const discovery = discoverAgents(root, true, { includeLocationalAgents: false });
+		assert.equal(discovery.projectAgentsDir, join(root, ".pi", "agents"));
+		assert.equal(discovery.agents.find((agent) => agent.id === "legacy").description, "Legacy project");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("an empty CWD .pi project directory masks portable definitions", () => {
+	const root = tempDir();
+	try {
+		const portable = join(root, ".agents", "subagents", "portable");
+		mkdirSync(portable, { recursive: true });
+		writeFileSync(join(portable, "SUBAGENTS.md"), "---\ndescription: Portable project\n---\n");
+		mkdirSync(join(root, ".pi", "agents"), { recursive: true });
+		const discovery = discoverAgents(root, true, { includeLocationalAgents: false });
+		assert.equal(discovery.projectAgentsDir, join(root, ".pi", "agents"));
+		assert.equal(discovery.agents.some((agent) => agent.id === "portable"), false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("only the CWD portable tree is excluded from locational discovery, IDs, and guards", () => {
+	const root = tempDir();
+	try {
+		const portable = join(root, ".agents", "subagents", "portable");
+		const nested = join(root, "nested", ".agents", "subagents", "nested");
+		const owned = join(root, "owned");
+		mkdirSync(portable, { recursive: true });
+		mkdirSync(nested, { recursive: true });
+		mkdirSync(owned);
+		writeFileSync(join(portable, "SUBAGENTS.md"), "---\ndescription: Portable project\n---\n");
+		writeFileSync(join(nested, "SUBAGENTS.md"), "---\ndescription: Nested locational\n---\n");
+		writeFileSync(join(owned, "SUBAGENTS.md"), "---\ndescription: Owned\n---\n");
+		const expected = [realpathSync.native(nested), realpathSync.native(owned)].sort();
+		assert.deepEqual(scanLocationalAgents(root).agents.map((agent) => realpathSync.native(agent.rootDir)).sort(), expected);
+		assert.equal(resolveLocationalAgentId(root, ".agents/subagents/portable"), null);
+		assert.equal(realpathSync.native(resolveLocationalAgentId(root, "nested/.agents/subagents/nested").rootDir), realpathSync.native(nested));
+		assert.deepEqual(getGuardedLocationalRoots(root).sort(), expected);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

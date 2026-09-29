@@ -32,6 +32,7 @@ export interface AgentDiscoveryResult {
 }
 
 const SUBAGENTS_FILE = "SUBAGENTS.md";
+const PORTABLE_PROJECT_AGENTS_DIR = path.join(".agents", "subagents");
 const DEFAULT_LOCATIONAL_SCAN_MAX_DEPTH = 6;
 const DEFAULT_LOCATIONAL_SCAN_TIMEOUT_MS = 500;
 const ALLOWED_FRONTMATTER_KEYS = new Set(["description", "tools", "model", "thinking", "manifest", "resumable"]);
@@ -135,12 +136,16 @@ function loadBehavioralAgentsFromDir(dir: string, origin: "bundled" | "user" | "
 	return { agents, errors };
 }
 
-function findNearestProjectAgentsDir(cwd: string): string | null {
-	for (let current = path.resolve(cwd); ; current = path.dirname(current)) {
-		const candidate = path.join(current, ".pi", "agents");
-		if (isDirectory(candidate)) return candidate;
-		if (path.dirname(current) === current) return null;
-	}
+function findProjectAgentsDir(cwd: string): string | null {
+	const root = path.resolve(cwd);
+	const legacy = path.join(root, ".pi", "agents");
+	return isDirectory(legacy) ? legacy : isDirectory(path.join(root, PORTABLE_PROJECT_AGENTS_DIR)) ? path.join(root, PORTABLE_PROJECT_AGENTS_DIR) : null;
+}
+
+export function isCwdPortableBehavioralDefinitionPath(cwd: string, value: string): boolean {
+	const portableRoot = path.resolve(cwd, PORTABLE_PROJECT_AGENTS_DIR);
+	const relative = path.relative(portableRoot, path.resolve(value));
+	return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)) || isPathInside(value, portableRoot);
 }
 
 export function loadLocationalAgent(rootDir: string, options: { readBody: boolean } = { readBody: true }): { agent?: AgentConfig; error?: string } {
@@ -151,8 +156,10 @@ export function loadLocationalAgent(rootDir: string, options: { readBody: boolea
 }
 
 export function resolveLocationalAgentId(cwd: string, id: string): AgentConfig | null {
-	const candidate = realPathIfExists(path.resolve(cwd, id));
-	if (!isDirectory(candidate) || !fs.existsSync(path.join(candidate, SUBAGENTS_FILE))) return null;
+	const requested = path.resolve(cwd, id);
+	if (isCwdPortableBehavioralDefinitionPath(cwd, requested)) return null;
+	const candidate = realPathIfExists(requested);
+	if (isCwdPortableBehavioralDefinitionPath(cwd, candidate) || !isDirectory(candidate) || !fs.existsSync(path.join(candidate, SUBAGENTS_FILE))) return null;
 	return loadLocationalAgent(candidate, { readBody: true }).agent ?? null;
 }
 
@@ -171,7 +178,7 @@ export function scanLocationalAgents(cwd: string, options: { maxDepth?: number; 
 			if (Date.now() - startedAt > timeoutMs) { timedOut = true; return; }
 			if (!entry.isDirectory() || SKIP_LOCATIONAL_SCAN_DIRS.has(entry.name)) continue;
 			const child = path.join(dir, entry.name);
-			if (isSymlink(child)) continue;
+			if (isCwdPortableBehavioralDefinitionPath(cwd, child) || isSymlink(child)) continue;
 			if (fs.existsSync(path.join(child, SUBAGENTS_FILE))) {
 				const loaded = loadLocationalAgent(child, { readBody: false });
 				if (loaded.error) errors.push(loaded.error);
@@ -188,7 +195,7 @@ export function discoverAgents(cwd: string, trustedProject: boolean, options: { 
 	const packageDir = path.dirname(fileURLToPath(import.meta.url));
 	const bundled = loadBehavioralAgentsFromDir(path.join(packageDir, "agents"), "bundled");
 	const user = loadBehavioralAgentsFromDir(path.join(getAgentDir(), "agents"), "user");
-	const projectAgentsDir = trustedProject ? findNearestProjectAgentsDir(cwd) : null;
+	const projectAgentsDir = trustedProject ? findProjectAgentsDir(cwd) : null;
 	const project = projectAgentsDir ? loadBehavioralAgentsFromDir(projectAgentsDir, "project") : { agents: [], errors: [] };
 	const locational = trustedProject && options.includeLocationalAgents !== false ? scanLocationalAgents(cwd) : { agents: [], errors: [] };
 	const behavioral = new Map<string, AgentConfig>();
