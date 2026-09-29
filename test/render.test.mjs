@@ -17,7 +17,7 @@ function result(overrides = {}) {
 		messages: [],
 		stderr: "",
 		usage: { input: 211000, output: 4800, cacheRead: 1800000, cacheWrite: 0, cost: 0.0833, contextTokens: 200000, turns: 19 },
-		model: "openai-codex/gpt-5.6-luna",
+		model: "openai/gpt-5.6-luna",
 		agentThinking: "high",
 		...overrides,
 	};
@@ -48,23 +48,23 @@ test("call labels only selected definition overrides", () => {
 
 test("compact running result is agent-free and shows declared thinking", () => {
 	const text = compact(result(), { isPartial: true });
-	assert.match(text, /^⏳ running · openai-codex\/gpt-5\.6-luna · high$/m);
+	assert.match(text, /^⏳ running · openai\/gpt-5\.6-luna · high$/m);
 	assert.match(text, /19 turns ↑211k ↓4\.8k R1\.8M \$0\.0833 ctx:200k/);
 	assert.doesNotMatch(text, /scout|session:new|\(no output\)/);
 });
 
 test("compact result shows default thinking without inferring it", () => {
 	const text = compact(result({ exitCode: 0, agentThinking: undefined, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, contextTokens: 0, turns: 0 } }));
-	assert.match(text, /^✓ completed · openai-codex\/gpt-5\.6-luna · default$/m);
+	assert.match(text, /^✓ completed · openai\/gpt-5\.6-luna · default$/m);
 	assert.match(text, /\(no output\)/);
 });
 
 test("completed and failed compact results preserve useful output", () => {
 	const complete = compact(result({ exitCode: 0, messages: [{ role: "assistant", content: [{ type: "text", text: "Audit complete" }] }] }));
-	assert.match(complete, /✓ completed · openai-codex\/gpt-5\.6-luna · high/);
+	assert.match(complete, /✓ completed · openai\/gpt-5\.6-luna · high/);
 	assert.match(complete, /Audit complete/);
 	const failed = compact(result({ exitCode: 1, stopReason: "context_limit", errorMessage: "Subagent hit context limit." }));
-	assert.match(failed, /✗ context_limit · openai-codex\/gpt-5\.6-luna · high/);
+	assert.match(failed, /✗ context_limit · openai\/gpt-5\.6-luna · high/);
 	assert.match(failed, /Error: Subagent hit context limit\./);
 });
 

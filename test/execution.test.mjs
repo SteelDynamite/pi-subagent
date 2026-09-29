@@ -80,6 +80,21 @@ test("resolveAgentModel uses explicit candidates and falls back to caller when u
 	assert.match(unavailable.warning, /No configured model/);
 });
 
+test("resolveAgentModel pins qualified selectors to their provider without changing thinking", () => {
+	const ctx = modelContext([
+		{ provider: "other", id: "gpt-6-luna", contextWindow: 1000 },
+		{ provider: "openai", id: "gpt-6-luna", contextWindow: 2000 },
+	]);
+	for (const kind of ["behavioral", "locational"]) {
+		const definition = { ...agent(kind), model: "openai/gpt-6-luna", thinking: "high" };
+		const resolved = resolveAgentModel(definition, ctx);
+		assert.equal(resolved.model, "openai/gpt-6-luna");
+		assert.equal(resolved.contextWindow, 2000);
+		assert.equal(resolved.source, "agent");
+		assert.equal(definition.thinking, "high");
+	}
+});
+
 test("resolveAgentModel uses env-configured preferred models and empty env disables them", () => {
 	const previous = process.env[LOCATIONAL_PREFERRED_MODELS_ENV];
 	try {
