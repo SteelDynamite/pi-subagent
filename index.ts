@@ -3,7 +3,6 @@ import {
 	discoverAgents,
 	getAgentInstructionsFileName,
 	isPathInside,
-	loadLocationalAgent,
 	resolveLocationalAgentId,
 } from "./agents.ts";
 import { CURRENT_LOCATIONAL_ROOT_ENV, DEFAULT_KNOWN_TOOLS } from "./constants.ts";
@@ -126,9 +125,9 @@ export default function (pi: ExtensionAPI) {
 		if (locational) parts.push(locational.content);
 		const activeRoot = process.env[CURRENT_LOCATIONAL_ROOT_ENV];
 		if (advertiseLocational && (!activeRoot || path.resolve(activeRoot) !== path.resolve(ctx.cwd))) {
-			const local = loadLocationalAgent(ctx.cwd, { readBody: true });
-			if (local.agent) {
-				parts.push(formatLocalLocationalPrompt(ctx, event.systemPromptOptions, path.join(path.resolve(ctx.cwd), getAgentInstructionsFileName()), local.agent.systemPrompt));
+			const local = resolveLocationalAgentId(ctx.cwd, ctx.cwd);
+			if (local) {
+				parts.push(formatLocalLocationalPrompt(ctx, event.systemPromptOptions, path.join(path.resolve(ctx.cwd), getAgentInstructionsFileName()), local.systemPrompt));
 			}
 		}
 		const errors = [...discovery.errors, ...discovery.agents.map(validateAgentTools).filter((error): error is string => Boolean(error))];

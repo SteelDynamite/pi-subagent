@@ -2,7 +2,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { AgentConfig } from "./agents.ts";
-import { getAgentInstructionsFileName, scanLocationalAgents } from "./agents.ts";
+import { getAgentInstructionsFileName, getBehavioralDefinitionRoots, isBehavioralDefinitionPath, scanLocationalAgents } from "./agents.ts";
 import { CURRENT_LOCATIONAL_ROOT_ENV, LOCATIONAL_ANCESTOR_STACK_ENV } from "./constants.ts";
 import type { ExtensionContext } from "./pi-compat.ts";
 
@@ -55,8 +55,9 @@ export function getLocationalLoopError(agent: AgentConfig): string | undefined {
 }
 
 function containingLocationalRoot(cwd: string): string | undefined {
+	const behavioralRoots = getBehavioralDefinitionRoots(cwd);
 	for (let current = path.resolve(cwd); ; current = path.dirname(current)) {
-		if (fs.existsSync(path.join(current, getAgentInstructionsFileName()))) return canonicalPath(current);
+		if (!isBehavioralDefinitionPath(current, behavioralRoots) && fs.existsSync(path.join(current, getAgentInstructionsFileName()))) return canonicalPath(current);
 		if (path.dirname(current) === current) return undefined;
 	}
 }

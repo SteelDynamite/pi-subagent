@@ -58,7 +58,11 @@ thinking: high
 
 ## Discovery and safety
 
-Behavioral definitions resolve from bundled `agents/`, then user `~/.pi/agent/agents/`, then one trusted project root. The project root is `cwd/.pi/agents/` when that directory exists (including empty); otherwise it is `cwd/.agents/subagents/`. Ancestors are never searched and roots are not merged. Only the exact `cwd/.agents/subagents/` tree is behavioral-only, not locational; nested directories with that name elsewhere remain eligible locational roots. `SUBAGENTS.md` is authoritative for other locational discovery, delegation, and boundaries. Direct access inside a locational root is blocked unless directly authorized for the request; a locational child cannot delegate to its active root or ancestor stack.
+Behavioral definitions resolve from the loaded extension's bundled `agents/`, then user `~/.pi/agent/agents/` (or `$PI_CODING_AGENT_DIR/agents/`), then one trusted project root. The project root is `cwd/.pi/agents/` when that directory exists (including empty); otherwise it is `cwd/.agents/subagents/`. Ancestors are never searched and project roots are not merged.
+
+These exact behavioral trees are excluded from locational discovery, path-based delegation, local owner instructions, and boundary guards. The CWD portable tree remains excluded even when masked by `.pi/agents`. Exclusions follow symlinked containers and direct-child directory symlinks containing `SUBAGENTS.md`, including overridden or invalid definitions. A directory merely named `agents`, or a nested `.agents/subagents` outside those trees, is not exempt. A separate checkout is not the loaded extension's bundled root. This checkout declares its `agents/` through the `.agents/subagents -> ../agents` project-root symlink, so an installed copy also recognizes these definitions as behavioral.
+
+`SUBAGENTS.md` remains authoritative for other locational discovery, delegation, and boundaries. A genuine locational ancestor still protects behavioral files beneath it; behavioral classification does not grant access through that ancestor. A locational child cannot delegate to its active root or ancestor stack.
 
 Locational models may declare `model:` candidates or use `PI_SUBAGENT_LOCATIONAL_PREFERRED_MODELS`. If a selected non-caller locational model fails before task work, the child retries once in the same session with the caller model. Context-limit failures are labeled `context_limit`.
 
