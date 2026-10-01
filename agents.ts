@@ -14,6 +14,9 @@ export interface AgentConfig {
 	tools?: string[];
 	model?: string;
 	thinking?: ThinkingLevel;
+	whenCallerModelId?: string;
+	thenModel?: "caller";
+	thenThinking?: ThinkingLevel;
 	manifest: boolean;
 	systemPrompt: string;
 	origin: AgentOrigin;
@@ -35,7 +38,8 @@ const SUBAGENTS_FILE = "SUBAGENTS.md";
 const PORTABLE_PROJECT_AGENTS_DIR = path.join(".agents", "subagents");
 const DEFAULT_LOCATIONAL_SCAN_MAX_DEPTH = 6;
 const DEFAULT_LOCATIONAL_SCAN_TIMEOUT_MS = 500;
-const ALLOWED_FRONTMATTER_KEYS = new Set(["description", "tools", "model", "thinking", "manifest", "resumable"]);
+const CALLER_OVERRIDE_KEYS = ["whenCallerModelId", "thenModel", "thenThinking"] as const;
+const ALLOWED_FRONTMATTER_KEYS = new Set(["description", "tools", "model", "thinking", "manifest", "resumable", ...CALLER_OVERRIDE_KEYS]);
 const SKIP_LOCATIONAL_SCAN_DIRS = new Set([".git", ".hg", ".svn", ".pi", "node_modules", "dist", "build", "out", ".next", ".nuxt", ".svelte-kit", "coverage", ".cache", ".turbo", ".parcel-cache", "target", "vendor", "Library", "Temp", "Logs", "obj", "bin"]);
 const DEFAULT_LOCATIONAL_PROMPT = `You are a locational subagent. This directory is your source root.
 
@@ -115,9 +119,19 @@ function loadInstructions(filePath: string, id: string, origin: AgentOrigin, kin
 	if (unknown.length) return { error: `${filePath}: unsupported frontmatter field(s): ${unknown.join(", ")}` };
 	const thinking = parseThinking(frontmatter.thinking);
 	if (frontmatter.thinking !== undefined && !thinking) return { error: `${filePath}: unsupported thinking level "${String(frontmatter.thinking)}". Expected one of: ${THINKING_LEVELS.join(", ")}` };
+	const hasCallerOverride = CALLER_OVERRIDE_KEYS.some((key) => frontmatter[key] !== undefined);
+	const whenCallerModelId = frontmatter.whenCallerModelId;
+	const thenThinking = parseThinking(frontmatter.thenThinking);
+	if (hasCallerOverride) {
+		if (kind !== "behavioral") return { error: `${filePath}: caller overrides are supported only for behavioral agents` };
+		if (CALLER_OVERRIDE_KEYS.some((key) => frontmatter[key] === undefined)) return { error: `${filePath}: caller overrides require whenCallerModelId, thenModel, and thenThinking together` };
+		if (typeof whenCallerModelId !== "string" || !whenCallerModelId || /[\s,*?\[\]]/.test(whenCallerModelId)) return { error: `${filePath}: whenCallerModelId must be one exact model ID, without whitespace, candidates, or wildcards` };
+		if (frontmatter.thenModel !== "caller") return { error: `${filePath}: thenModel must be "caller"` };
+		if (!thenThinking) return { error: `${filePath}: unsupported thenThinking level "${String(frontmatter.thenThinking)}". Expected one of: ${THINKING_LEVELS.join(", ")}` };
+	}
 	const rootDir = options.rootDir ?? path.dirname(filePath);
 	const rawBody = options.readBody ? resolveAtIncludes(body, rootDir).trim() : "";
-	return { agent: { id, description: frontmatter.description === undefined ? "" : String(frontmatter.description), tools: parseTools(frontmatter.tools), model: frontmatter.model === undefined ? undefined : String(frontmatter.model), thinking, manifest: parseBoolean(frontmatter.manifest, true), resumable: parseBoolean(frontmatter.resumable, kind === "locational"), systemPrompt: rawBody || (kind === "locational" ? DEFAULT_LOCATIONAL_PROMPT : ""), origin, kind, filePath, rootDir } };
+	return { agent: { id, description: frontmatter.description === undefined ? "" : String(frontmatter.description), tools: parseTools(frontmatter.tools), model: frontmatter.model === undefined ? undefined : String(frontmatter.model), thinking, ...(hasCallerOverride ? { whenCallerModelId: whenCallerModelId as string, thenModel: "caller" as const, thenThinking } : {}), manifest: parseBoolean(frontmatter.manifest, true), resumable: parseBoolean(frontmatter.resumable, kind === "locational"), systemPrompt: rawBody || (kind === "locational" ? DEFAULT_LOCATIONAL_PROMPT : ""), origin, kind, filePath, rootDir } };
 }
 
 function loadBehavioralAgentsFromDir(dir: string, origin: "bundled" | "user" | "project"): { agents: AgentConfig[]; errors: string[] } {

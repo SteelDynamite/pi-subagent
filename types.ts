@@ -48,6 +48,8 @@ export interface SingleResult {
 	agentOrigin: AgentOrigin | "unknown";
 	agentOverride?: boolean;
 	agentThinking?: ThinkingLevel;
+	/** Eligible launch-time intent, not child payload or server confirmation. Omission means unknown. */
+	requestedSpeed?: "ultrafast";
 	sessionIntent?: SessionIntent;
 	wrongSessionIntent?: WrongSessionIntentError;
 	task: string;

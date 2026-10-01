@@ -45,6 +45,7 @@ function formatModelRef(model: ExtensionContext["model"]): string | undefined {
 
 export type ResolvedAgentModel = {
 	model?: string;
+	thinking?: AgentConfig["thinking"];
 	contextWindow?: number;
 	warning?: string;
 	source: "agent" | "preferred" | "caller";
@@ -67,12 +68,17 @@ function resolveAvailableModel(candidates: string[], ctx: ExtensionContext): { m
 export function resolveAgentModel(agent: AgentConfig, ctx: ExtensionContext): ResolvedAgentModel {
 	const callerModel = formatModelRef(ctx.model);
 	const callerContextWindow = ctx.model?.contextWindow;
+	if (agent.kind === "behavioral" && ctx.model && ctx.model.id === agent.whenCallerModelId && agent.thenModel === "caller") {
+		return { model: callerModel, thinking: agent.thenThinking, contextWindow: callerContextWindow, source: "caller" };
+	}
+	const thinking = agent.thinking;
 	const explicit = parseModelCandidates(agent.model);
 	if (explicit.length) {
 		const resolved = resolveAvailableModel(explicit, ctx);
-		if (resolved.model) return { ...resolved, source: "agent", fallbackModel: callerModel, fallbackContextWindow: callerContextWindow };
+		if (resolved.model) return { ...resolved, thinking, source: "agent", fallbackModel: callerModel, fallbackContextWindow: callerContextWindow };
 		return {
 			model: callerModel,
+			thinking,
 			contextWindow: callerContextWindow,
 			source: "caller",
 			warning: `No configured model from "${agent.model}" for ${agent.id}; using caller model${callerModel ? ` ${callerModel}` : ""}.`,
@@ -80,9 +86,9 @@ export function resolveAgentModel(agent: AgentConfig, ctx: ExtensionContext): Re
 	}
 	if (agent.kind === "locational") {
 		const preferred = resolveAvailableModel(parseModelCandidates(process.env[LOCATIONAL_PREFERRED_MODELS_ENV]), ctx);
-		if (preferred.model) return { ...preferred, source: "preferred", fallbackModel: callerModel, fallbackContextWindow: callerContextWindow };
+		if (preferred.model) return { ...preferred, thinking, source: "preferred", fallbackModel: callerModel, fallbackContextWindow: callerContextWindow };
 	}
-	return { model: callerModel, contextWindow: callerContextWindow, source: "caller" };
+	return { model: callerModel, thinking, contextWindow: callerContextWindow, source: "caller" };
 }
 
 export function validateAgentTools(agent: AgentConfig): string | undefined {
@@ -211,12 +217,13 @@ export async function runDelegation(
 	if (loopError) return makeErrorResult(agent.id, task, loopError, session);
 	const toolError = validateAgentTools(agent);
 	if (toolError) return makeErrorResult(agent.id, task, toolError, session);
+	const resolvedModel = resolveAgentModel(agent, ctx);
 	const required = getRequiredSessionIntent(ctx, agent);
 	if (session !== required.intent) {
 		return makeErrorResult(agent.id, task, formatWrongIntentReason(agent, session, required.intent, required.reason), session, {
 			agentOrigin: agent.origin,
 			agentOverride: agent.overrides,
-			agentThinking: agent.thinking,
+			agentThinking: resolvedModel.thinking,
 			wrongSessionIntent: {
 				agentId: agent.id,
 				requested: session,
@@ -226,7 +233,6 @@ export async function runDelegation(
 		});
 	}
 
-	const resolvedModel = resolveAgentModel(agent, ctx);
 	const retryWithCaller = agent.kind === "locational" && Boolean(resolvedModel.fallbackModel) && resolvedModel.fallbackModel !== resolvedModel.model;
 	let sessionId = agent.resumable && subagentSettings.reuseEnabled
 		? session === "resume" ? required.record?.sessionId : crypto.randomUUID()
@@ -238,13 +244,13 @@ export async function runDelegation(
 		if (sessionId) args.push("--session-id", sessionId);
 		else args.push("--no-session");
 		if (model.model) args.push("--model", model.model);
-		if (agent.thinking) args.push("--thinking", agent.thinking);
+		if (resolvedModel.thinking) args.push("--thinking", resolvedModel.thinking);
 		if (agent.tools?.length) args.push("--tools", agent.tools.join(","));
 		const result: SingleResult = {
 			agent: agent.id,
 			agentOrigin: agent.origin,
 			agentOverride: agent.overrides,
-			agentThinking: agent.thinking,
+			agentThinking: resolvedModel.thinking,
 			sessionIntent: session,
 			task,
 			exitCode: -1,
@@ -271,9 +277,18 @@ export async function runDelegation(
 			let contextEvidence: string | undefined;
 			await new Promise<void>((resolve) => {
 				const invocation = getPiInvocation(args);
+				const env = { ...process.env, ...makeSubagentChildEnv(agent, currentDepth, includeLocationalAgentsInBehavioralChild) };
+				if (env.PI_CHATGPT_SPEED?.toLowerCase() === "ultrafast") {
+					const childModel = model.model === formatModelRef(ctx.model) ? ctx.model
+						: ctx.modelRegistry.getAvailable().find((candidate) => formatModelRef(candidate) === model.model);
+					// pi-chatgpt's Ultrafast eligibility; parent FAST describes the parent, not this child.
+					if (childModel?.id === "gpt-6-astra" && /^(?:openai|openai-codex(?:-\d+)?)$/.test(childModel.provider) && ctx.modelRegistry.isUsingOAuth?.(childModel)) {
+						result.requestedSpeed = "ultrafast";
+					}
+				}
 				const proc = spawn(invocation.command, invocation.args, {
 					cwd: result.cwd,
-					env: { ...process.env, ...makeSubagentChildEnv(agent, currentDepth, includeLocationalAgentsInBehavioralChild) },
+					env,
 					shell: false,
 					stdio: ["ignore", "pipe", "pipe"],
 				});

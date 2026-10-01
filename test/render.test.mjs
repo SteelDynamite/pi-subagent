@@ -68,6 +68,40 @@ test("completed and failed compact results preserve useful output", () => {
 	assert.match(failed, /Error: Subagent hit context limit\./);
 });
 
+test("requested speed in live, historical, and nested views comes only from stored metadata", () => {
+	const previousSpeed = process.env.PI_CHATGPT_SPEED;
+	const previousFast = process.env.PI_CHATGPT_FAST;
+	try {
+		for (const speed of ["standard", "fast", "ultrafast"]) {
+			process.env.PI_CHATGPT_SPEED = speed;
+			process.env.PI_CHATGPT_FAST = "1";
+			for (const expanded of [false, true]) {
+				for (const exitCode of [-1, 0, 1]) {
+					const saved = JSON.parse(JSON.stringify(result({ model: "openai/gpt-6-astra", exitCode, requestedSpeed: "ultrafast" })));
+					const text = compact(saved, { expanded, isPartial: exitCode === -1 });
+					assert.match(text, / · high · Ultrafast requested$/m);
+					assert.doesNotMatch(text, /confirmed|accepted|standard requested|Fast requested/);
+					delete saved.requestedSpeed;
+					assert.doesNotMatch(compact(saved, { expanded, isPartial: exitCode === -1 }), /requested|fast|standard/i);
+				}
+				const nested = result({ nestedSubagents: [{
+					toolCallId: "nested", toolName: "subagent", status: "running",
+					details: { results: [result({ agent: "requested-child", requestedSpeed: "ultrafast" }), result({ agent: "old-child" })] },
+				}] });
+				const nestedText = compact(JSON.parse(JSON.stringify(nested)), { expanded, isPartial: true });
+				assert.match(nestedText, /requested-child · Ultrafast requested/);
+				assert.doesNotMatch(nestedText, /old-child · Ultrafast/);
+				assert.equal(nestedText.match(/Ultrafast requested/g)?.length, 1);
+			}
+		}
+	} finally {
+		if (previousSpeed === undefined) delete process.env.PI_CHATGPT_SPEED;
+		else process.env.PI_CHATGPT_SPEED = previousSpeed;
+		if (previousFast === undefined) delete process.env.PI_CHATGPT_FAST;
+		else process.env.PI_CHATGPT_FAST = previousFast;
+	}
+});
+
 test("expanded running result omits an empty output placeholder", () => {
 	const view = renderSubagentResult({ content: [], details: { results: [result()] } }, { expanded: true, isPartial: true }, theme, { state: {} });
 	assert.doesNotMatch(rendered(view), /─── Output ───|\(no output\)/);

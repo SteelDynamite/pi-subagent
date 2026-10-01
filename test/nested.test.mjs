@@ -76,11 +76,12 @@ test("large nested details are conservatively capped", () => {
 		type: "tool_execution_update",
 		toolCallId: "large",
 		toolName: "subagent",
-		partialResult: { details: details([result({ agent: "large", task: huge, messages: [assistantText(huge)] })]) },
+		partialResult: { details: details([result({ agent: "large", requestedSpeed: "ultrafast", task: huge, messages: [assistantText(huge)] })]) },
 	});
 	const nested = owner.nestedSubagents[0];
 	assert.equal(nested.truncated, true);
 	assert.equal(nested.details.results[0].messages.length, 0);
+	assert.equal(nested.details.results[0].requestedSpeed, "ultrafast");
 	assert.match(nested.details.results[0].task, /\[truncated\]/);
 });
 

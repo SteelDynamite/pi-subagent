@@ -25,6 +25,7 @@ export interface ExtensionContext {
 	};
 	modelRegistry: {
 		getAvailable(): Array<{ provider: string; id: string; contextWindow?: number }>;
+		isUsingOAuth?(model: NonNullable<ExtensionContext["model"]>): boolean;
 	};
 	model?: { provider: string; id: string; contextWindow?: number };
 }

@@ -147,7 +147,7 @@ test("runDelegation retries a locational model in the same session", async () =>
 		delete process.env.PI_SUBPROCESS_CHILD;
 		const agentRoot = join(root, "loc-agent");
 		mkdirSync(agentRoot);
-		writeFileSync(join(agentRoot, "SUBAGENTS.md"), "---\nmodel: provider/explicit\nresumable: false\n---\n");
+		writeFileSync(join(agentRoot, "SUBAGENTS.md"), "---\nmodel: provider/explicit\nthinking: high\nresumable: false\n---\n");
 		const stateFile = join(root, "state.json");
 		writeFileSync(stateFile, "[]");
 		const piPath = join(root, "fake-pi.cjs");
@@ -160,6 +160,7 @@ const sessionIndex = args.indexOf("--session-id");
 const call = {
   model: modelIndex >= 0 ? args[modelIndex + 1] : "(default)",
   sessionId: sessionIndex >= 0 ? args[sessionIndex + 1] : "",
+  thinking: args.includes("--thinking") ? args[args.indexOf("--thinking") + 1] : undefined,
   orchestrated: process.env.PI_ORCHESTRATED_CHILD,
   legacy: process.env.PI_SUBPROCESS_CHILD,
 };
@@ -191,6 +192,8 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 
 		const calls = JSON.parse(readFileSync(stateFile, "utf8"));
 		assert.deepEqual(calls.map((call) => call.model), ["provider/explicit", "caller/default"]);
+		assert.deepEqual(calls.map((call) => call.thinking), ["high", "high"]);
+		assert.equal(result.agentThinking, "high");
 		assert.equal(calls[0].sessionId, calls[1].sessionId);
 		assert.ok(calls[0].sessionId);
 		assert.ok(calls.every((call) => call.orchestrated === "1" && call.legacy === undefined));

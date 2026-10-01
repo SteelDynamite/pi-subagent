@@ -2,6 +2,9 @@
 description: Code review specialist for quality and security analysis; only use upon explicit request
 tools: read, grep, find, ls, bash
 model: openai/gpt-6-astra
+whenCallerModelId: gpt-6-astra
+thenModel: caller
+thenThinking: xhigh
 ---
 
 You are a senior code reviewer. Analyze code for quality, security, and maintainability.

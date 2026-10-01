@@ -54,14 +54,14 @@ test("display helpers recognize only singular subagent calls", () => {
 	assert.deepEqual(getNestedSubagentIds(messages), ["a"]);
 });
 
-test("formatUsageStats appends fast only when PI_CHATGPT_FAST is 1", () => {
+test("formatUsageStats does not infer child speed from parent environment", () => {
 	const previous = process.env.PI_CHATGPT_FAST;
 	const usage = { input: 1200, output: 25, cacheRead: 0, cacheWrite: 2000, cost: 0.01234, contextTokens: 5000, turns: 2 };
 	try {
 		process.env.PI_CHATGPT_FAST = "0";
 		assert.equal(formatUsageStats(usage, "provider/model"), "2 turns ↑1.2k ↓25 W2.0k $0.0123 ctx:5.0k provider/model");
 		process.env.PI_CHATGPT_FAST = "1";
-		assert.equal(formatUsageStats(usage, "provider/model"), "2 turns ↑1.2k ↓25 W2.0k $0.0123 ctx:5.0k provider/model fast");
+		assert.equal(formatUsageStats(usage, "provider/model"), "2 turns ↑1.2k ↓25 W2.0k $0.0123 ctx:5.0k provider/model");
 	} finally {
 		if (previous === undefined) delete process.env.PI_CHATGPT_FAST;
 		else process.env.PI_CHATGPT_FAST = previous;

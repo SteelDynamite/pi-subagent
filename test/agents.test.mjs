@@ -47,6 +47,59 @@ test("agent definitions validate thinking for locational and behavioral agents",
 	}
 });
 
+test("behavioral caller overrides require a complete, valid flat rule", () => {
+	const root = tempDir();
+	const agentDir = tempDir();
+	const previous = process.env.PI_CODING_AGENT_DIR;
+	try {
+		process.env.PI_CODING_AGENT_DIR = agentDir;
+		const definition = join(root, ".pi", "agents", "conditional", "SUBAGENTS.md");
+		mkdirSync(join(root, ".pi", "agents", "conditional"), { recursive: true });
+		const fields = ["whenCallerModelId: gpt-6-astra", "thenModel: caller", "thenThinking: low"];
+		for (const thinking of THINKING_LEVELS) {
+			writeFileSync(definition, `---\n${fields.slice(0, 2).join("\n")}\nthenThinking: ${thinking}\n---\n`);
+			const discovery = discoverAgents(root, true, { includeLocationalAgents: false });
+			assert.deepEqual(discovery.errors, []);
+			const conditional = discovery.agents.find((agent) => agent.id === "conditional");
+			assert.equal(conditional.whenCallerModelId, "gpt-6-astra");
+			assert.equal(conditional.thenModel, "caller");
+			assert.equal(conditional.thenThinking, thinking);
+			assert.equal(conditional.thinking, undefined);
+		}
+		const invalid = [];
+		for (let mask = 1; mask < 7; mask++) {
+			invalid.push([fields.filter((_field, index) => mask & (1 << index)).join("\n"), /require .* together/]);
+		}
+		for (const value of ["", '""', "true", "[gpt-6-astra]", "gpt-6-astra,other", "gpt-*", "gpt-?", '" gpt-6-astra"', '"gpt 6"']) {
+			invalid.push([`whenCallerModelId: ${value}\n${fields.slice(1).join("\n")}`, /whenCallerModelId must be one exact model ID/]);
+		}
+		for (const value of ["", "true", "[caller]", "inherit", "openai/gpt-6-astra"]) {
+			invalid.push([`${fields[0]}\nthenModel: ${value}\n${fields[2]}`, /thenModel must be "caller"/]);
+		}
+		for (const value of ["", "false", "[low]", "deepest", "LOW"]) {
+			invalid.push([`${fields.slice(0, 2).join("\n")}\nthenThinking: ${value}`, /unsupported thenThinking level/]);
+		}
+		invalid.push([`${fields.join("\n")}\nthenTools: bash`, /unsupported frontmatter/]);
+		for (const [body, error] of invalid) {
+			writeFileSync(definition, `---\n${body}\n---\n`);
+			const discovery = discoverAgents(root, true, { includeLocationalAgents: false });
+			assert.equal(discovery.agents.some((agent) => agent.id === "conditional"), false, body);
+			assert.match(discovery.errors.join("\n"), error, body);
+		}
+		for (const body of [...fields, fields.join("\n")]) {
+			writeFileSync(join(root, "SUBAGENTS.md"), `---\n${body}\n---\n`);
+			const locational = loadLocationalAgent(root);
+			assert.equal(locational.agent, undefined);
+			assert.match(locational.error, /only for behavioral agents/);
+		}
+	} finally {
+		if (previous === undefined) delete process.env.PI_CODING_AGENT_DIR;
+		else process.env.PI_CODING_AGENT_DIR = previous;
+		rmSync(root, { recursive: true, force: true });
+		rmSync(agentDir, { recursive: true, force: true });
+	}
+});
+
 test("loadLocationalAgent accepts every supported thinking level", () => {
 	const root = tempDir();
 	try {
@@ -209,7 +262,7 @@ test("behavioral discovery precedence is bundled, user, then trusted project", (
 	const previous = process.env.PI_CODING_AGENT_DIR;
 	try {
 		mkdirSync(join(agentDir, "agents", "scout"), { recursive: true });
-		writeFileSync(join(agentDir, "agents", "scout", "SUBAGENTS.md"), "---\ndescription: User scout\n---\nUser\n");
+		writeFileSync(join(agentDir, "agents", "scout", "SUBAGENTS.md"), "---\ndescription: User scout\nwhenCallerModelId: user-model\nthenModel: caller\nthenThinking: off\n---\nUser\n");
 		mkdirSync(join(root, ".pi", "agents", "scout"), { recursive: true });
 		writeFileSync(join(root, ".pi", "agents", "scout", "SUBAGENTS.md"), "---\ndescription: Project scout\nthinking: medium\n---\nProject\n");
 		process.env.PI_CODING_AGENT_DIR = agentDir;
@@ -217,11 +270,16 @@ test("behavioral discovery precedence is bundled, user, then trusted project", (
 		const untrusted = discoverAgents(root, false, { includeLocationalAgents: false });
 		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").description, "User scout");
 		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").overrides, true);
+		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").whenCallerModelId, "user-model");
+		assert.equal(untrusted.agents.find((agent) => agent.id === "scout").thenThinking, "off");
 		assert.equal(untrusted.projectAgentsDir, null);
 
 		const trusted = discoverAgents(root, true, { includeLocationalAgents: false });
 		assert.equal(trusted.agents.find((agent) => agent.id === "scout").description, "Project scout");
 		assert.equal(trusted.agents.find((agent) => agent.id === "scout").thinking, "medium");
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").whenCallerModelId, undefined);
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").thenModel, undefined);
+		assert.equal(trusted.agents.find((agent) => agent.id === "scout").thenThinking, undefined);
 		assert.equal(trusted.agents.find((agent) => agent.id === "scout").overrides, true);
 		assert.equal(trusted.projectAgentsDir, join(root, ".pi", "agents"));
 		assert.deepEqual(trusted.agents.map((agent) => agent.id).sort(), ["reviewer", "scout", "worker"]);

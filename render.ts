@@ -6,6 +6,10 @@ import type { NestedSubagentCall, SingleResult, SubagentDetails } from "./types.
 
 function preview(text: string, max = 120): string { const line = text.replace(/\s+/g, " ").trim(); return line.length > max ? `${line.slice(0, max)}...` : line; }
 
+function formatRequestedSpeed(speed: SingleResult["requestedSpeed"]): string {
+	return speed === "ultrafast" ? " · Ultrafast requested" : "";
+}
+
 export function formatNestedSubagentsForDisplay(
 	calls: NestedSubagentCall[] | undefined,
 	themeFg: (color: any, text: string) => string = (_color, text) => text,
@@ -21,7 +25,7 @@ export function formatNestedSubagentsForDisplay(
 			lines.push(`${"  ".repeat(currentDepth)}${themeFg("muted", "↳")} ${icon} ${themeFg("toolTitle", call.toolName)} ${themeFg("muted", `[${call.status}]`)}`);
 			if (call.error) lines.push(`${"  ".repeat(currentDepth + 1)}${themeFg("error", `Error: ${preview(call.error)}`)}`);
 			for (const result of call.details?.results ?? []) {
-				lines.push(`${"  ".repeat(currentDepth + 1)}${themeFg("accent", result.agent)} ${themeFg("dim", preview(getFinalOutput(result.messages) || result.errorMessage || result.stderr || "(running...)"))}`);
+				lines.push(`${"  ".repeat(currentDepth + 1)}${themeFg("accent", result.agent)}${themeFg("muted", formatRequestedSpeed(result.requestedSpeed))} ${themeFg("dim", preview(getFinalOutput(result.messages) || result.errorMessage || result.stderr || "(running...)"))}`);
 				visit(result.nestedSubagents ?? [], currentDepth + 1);
 			}
 		}
@@ -38,7 +42,7 @@ function formatCall(args: { id?: string; session?: string; task?: string }, them
 
 function formatStatus(agent: SingleResult, running: boolean, theme: any): string {
 	const status = running ? "⏳ running" : isFailedResult(agent) ? `✗ ${agent.stopReason || "failed"}` : "✓ completed";
-	return `${theme.fg(running ? "warning" : isFailedResult(agent) ? "error" : "success", status)}${theme.fg("muted", ` · ${agent.model || "default"} · ${agent.agentThinking || "default"}`)}`;
+	return `${theme.fg(running ? "warning" : isFailedResult(agent) ? "error" : "success", status)}${theme.fg("muted", ` · ${agent.model || "default"} · ${agent.agentThinking || "default"}${formatRequestedSpeed(agent.requestedSpeed)}`)}`;
 }
 
 export function renderSubagentCall(args: { id?: string; session?: string; task?: string }, theme: any, context: any) {

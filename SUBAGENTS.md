@@ -6,7 +6,9 @@ Keep delegation foreground-managed: each `subagent` call launches one isolated P
 
 ## Model configuration maintenance
 
-Pin OpenAI model selectors as `openai/<model-id>`; preserve model IDs and declared thinking levels. This root declares neither model nor thinking: locational selection uses `PI_SUBAGENT_LOCATIONAL_PREFERRED_MODELS` when available, otherwise the caller model.
+Pin explicit OpenAI model selectors as `openai/<model-id>`; preserve model IDs and declared thinking levels. Behavioral `whenCallerModelId` is a literal model ID, not a provider-qualified selector; `thenModel: caller` preserves the immediate caller's provider. Keep conditional policy in definitions, never agent-name dispatch or speed-dependent matching. See README's behavioral caller overrides for field validation and resume semantics.
+
+This root declares neither model nor thinking: locational selection uses `PI_SUBAGENT_LOCATIONAL_PREFERRED_MODELS` when available, otherwise the caller model.
 
 Definitions are reread on each delegation and before each agent turn; selector edits need no reload. Extension-code changes require `/reload`; parent environment changes require restarting Pi. The visible locational manifest is a branch snapshot, not the live selector configuration.
 
