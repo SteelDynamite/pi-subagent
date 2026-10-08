@@ -43,6 +43,22 @@ ln -sf "$(pwd)/prompts/implement.md" ~/.pi/agent/prompts/implement.md
 
 Use ordinary `bash` calls for shell commands and sibling/later `subagent` calls for concurrent/sequential delegation.
 
+## Token speed
+
+Compact, expanded, and nested cards show live **~25.0 tok/s** estimates and a stable **25.0 tok/s** aggregate after each model call. No footer entries are added.
+
+Measurement matches `pi-token-speed` 0.1.0:
+
+- Live: five-second rolling window, 500 ms warm-up, four characters per token for text, thinking, and tool-call argument deltas. The entire first emitted chunk is omitted.
+- Completed calls: reported `usage.output` minus one token when positive and finite; otherwise characters after the first chunk divided by four.
+- Timing: first-to-last emitted delta, excluding TTFT, tool execution, and completion-tail latency. Final speed is total measured tokens divided by total measured duration, not an average of call rates.
+
+Rates describe observed generation throughput, not end-to-end task speed or a service-tier guarantee. Hidden reasoning can skew comparisons, and child stdout buffering affects observed timing. The final number can also use the character fallback. All records received in one stdout chunk share a timestamp; parsing and rendering those records do not create artificial generation time. A response received entirely in one chunk has no measurable duration and contributes no rate. Calls without two time-separated nonempty deltas or positive measured tokens contribute nothing. Tool waits retain the last aggregate; the next call starts a fresh live warm-up.
+
+Each new, resumed, or fallback launch starts fresh. Descendants retain their own rates, never added to the parent's rate. Interrupted streams without a completed assistant message contribute no final measurement; any earlier completed calls in that launch retain their aggregate. Older results and missing/malformed measurements show no label. Historical cards use stored numbers, never the current clock.
+
+Structured `details.results[].tokenSpeed` contains `{ mode: "live" | "aggregate", tokens, durationMs }`; `tokens` is the already-adjusted numerator (possibly fractional), and `durationMs` its measured denominator. Speed-only progress updates are event-driven, at most once per 250 ms; completion and nested progress remain immediate. No timer or dependency on another extension is needed. Requested service speed below is independent of this measurement.
+
 ## Requested speed indicator
 
 Subagent status may show **Ultrafast requested**. The optional `requestedSpeed: "ultrafast"` result field records launch-time intent and drives compact, expanded, historical, and nested displays. It is captured separately for each launch, including resume and model-fallback retries; later parent setting changes do not relabel an existing result.

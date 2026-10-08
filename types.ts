@@ -43,6 +43,13 @@ export interface WrongSessionIntentError {
 	recommendedRetry: string;
 }
 
+/** Stored numerator/denominator, not wall-clock timestamps. Aggregate covers measurable calls in one launch attempt. */
+export interface TokenSpeedMeasurement {
+	mode: "live" | "aggregate";
+	tokens: number;
+	durationMs: number;
+}
+
 export interface SingleResult {
 	agent: string;
 	agentOrigin: AgentOrigin | "unknown";
@@ -50,6 +57,8 @@ export interface SingleResult {
 	agentThinking?: ThinkingLevel;
 	/** Eligible launch-time intent, not child payload or server confirmation. Omission means unknown. */
 	requestedSpeed?: "ultrafast";
+	/** Live character estimate or completed duration-weighted aggregate; independent of requestedSpeed. */
+	tokenSpeed?: TokenSpeedMeasurement;
 	sessionIntent?: SessionIntent;
 	wrongSessionIntent?: WrongSessionIntentError;
 	task: string;

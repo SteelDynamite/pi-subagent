@@ -14,4 +14,10 @@ Definitions are reread on each delegation and before each agent turn; selector e
 
 To bootstrap a locational owner with failed provider authentication, select an authenticated caller model first. An unavailable explicit selector uses the caller immediately; a selected non-caller model may retry once with the caller after a qualifying pre-work provider failure. Preferred-model environment settings do not override explicit `model:` entries. Delegate maintenance to the owner; do not bypass boundaries when owner instructions block edits.
 
+## Token-speed maintenance
+
+`token-speed.ts` is a self-contained adaptation of `pi-token-speed` 0.1.0 `src/token-speed.ts` (MIT), not a runtime dependency. Golden parity fixtures in `test/fixtures/token-speed.mjs` record the reference source SHA-256. Preserve footer measurement semantics, including first-chunk omission live versus first-token subtraction at completion; do not substitute runtime-average throughput. Reference updates require explicit parity checks, not automatic sibling imports.
+
+Keep measurement state per launch attempt, use monotonic receipt time injected through `runDelegation`, and preserve optional numeric `SingleResult.tokenSpeed` through nested caps and final tool details. Decode stdout incrementally as UTF-8 and timestamp each received chunk once before parsing; records received together must not acquire artificial timing from parsing or progress callbacks. Count only assistant text/thinking/toolcall deltas, never cumulative snapshots or nested results. Finalize from completed calls on process close; do not save an unfinished live estimate as final. Never reconstruct historical timing from the wall clock. Speed-driven publication is event-throttled (250 ms), with no timer; existing message/nested updates stay immediate.
+
 @README.md

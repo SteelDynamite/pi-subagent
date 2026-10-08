@@ -3,6 +3,7 @@ import { getMarkdownTheme } from "./pi-compat.ts";
 import { COLLAPSED_ITEM_COUNT, MAX_NESTED_RENDER_DEPTH, MAX_NESTED_RENDER_LINES } from "./constants.ts";
 import { formatUsageStats, getDisplayItems, getFinalOutput, getNestedSubagentIds, isFailedResult } from "./result.ts";
 import type { NestedSubagentCall, SingleResult, SubagentDetails } from "./types.ts";
+import { formatTokenSpeed } from "./token-speed.ts";
 
 function preview(text: string, max = 120): string { const line = text.replace(/\s+/g, " ").trim(); return line.length > max ? `${line.slice(0, max)}...` : line; }
 
@@ -25,7 +26,7 @@ export function formatNestedSubagentsForDisplay(
 			lines.push(`${"  ".repeat(currentDepth)}${themeFg("muted", "↳")} ${icon} ${themeFg("toolTitle", call.toolName)} ${themeFg("muted", `[${call.status}]`)}`);
 			if (call.error) lines.push(`${"  ".repeat(currentDepth + 1)}${themeFg("error", `Error: ${preview(call.error)}`)}`);
 			for (const result of call.details?.results ?? []) {
-				lines.push(`${"  ".repeat(currentDepth + 1)}${themeFg("accent", result.agent)}${themeFg("muted", formatRequestedSpeed(result.requestedSpeed))} ${themeFg("dim", preview(getFinalOutput(result.messages) || result.errorMessage || result.stderr || "(running...)"))}`);
+				lines.push(`${"  ".repeat(currentDepth + 1)}${themeFg("accent", result.agent)}${themeFg("muted", formatRequestedSpeed(result.requestedSpeed) + formatTokenSpeed(result.tokenSpeed))} ${themeFg("dim", preview(getFinalOutput(result.messages) || result.errorMessage || result.stderr || "(running...)"))}`);
 				visit(result.nestedSubagents ?? [], currentDepth + 1);
 			}
 		}
@@ -42,7 +43,7 @@ function formatCall(args: { id?: string; session?: string; task?: string }, them
 
 function formatStatus(agent: SingleResult, running: boolean, theme: any): string {
 	const status = running ? "⏳ running" : isFailedResult(agent) ? `✗ ${agent.stopReason || "failed"}` : "✓ completed";
-	return `${theme.fg(running ? "warning" : isFailedResult(agent) ? "error" : "success", status)}${theme.fg("muted", ` · ${agent.model || "default"} · ${agent.agentThinking || "default"}${formatRequestedSpeed(agent.requestedSpeed)}`)}`;
+	return `${theme.fg(running ? "warning" : isFailedResult(agent) ? "error" : "success", status)}${theme.fg("muted", ` · ${agent.model || "default"} · ${agent.agentThinking || "default"}${formatRequestedSpeed(agent.requestedSpeed)}${formatTokenSpeed(agent.tokenSpeed)}`)}`;
 }
 
 export function renderSubagentCall(args: { id?: string; session?: string; task?: string }, theme: any, context: any) {

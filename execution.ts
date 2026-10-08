@@ -28,6 +28,7 @@ import {
 	updateTrackedSession,
 } from "./state.ts";
 import type { OnUpdateCallback, SessionIntent, SingleResult, SubagentDetails } from "./types.ts";
+import { streamDelta, TokenSpeedTracker } from "./token-speed.ts";
 
 let knownToolNames = new Set(DEFAULT_KNOWN_TOOLS);
 
@@ -105,12 +106,35 @@ export function makeSubagentChildEnv(agent: AgentConfig, currentDepth: number, i
 	};
 }
 
-export function processChildJsonEvent(event: any, result: SingleResult, emitUpdate: () => void): void {
+interface ChildProgress {
+	speed: TokenSpeedTracker;
+	now: () => number;
+	lastSpeedUpdateAt?: number;
+}
+
+export function processChildJsonEvent(event: any, result: SingleResult, emitUpdate: () => void, progress?: ChildProgress): void {
 	if (applyNestedSubagentEvent(result, event)) emitUpdate();
+	if (progress && event.type === "message_start" && event.message?.role === "assistant") progress.speed.beginCall();
+	if (progress && event.type === "message_update") {
+		// JSON mode is delta-only; never count message/partial snapshots or block-end content.
+		if (event.assistantMessageEvent?.type === "start") progress.speed.beginCall();
+		const delta = streamDelta(event.assistantMessageEvent);
+		if (delta !== undefined) {
+			const at = progress.now();
+			const previous = result.tokenSpeed;
+			result.tokenSpeed = progress.speed.addDelta(delta, at);
+			// Only speed-driven updates are throttled. Completion and nested progress stay immediate.
+			if ((previous || result.tokenSpeed) && at - (progress.lastSpeedUpdateAt ?? -Infinity) >= 250) {
+				progress.lastSpeedUpdateAt = at;
+				emitUpdate();
+			}
+		}
+	}
 	if (event.type === "message_end" && event.message) {
 		const message = event.message as Message;
 		result.messages.push(message);
 		if (message.role === "assistant") {
+			if (progress) result.tokenSpeed = progress.speed.endCall(message.usage?.output);
 			result.usage.turns++;
 			const usage = message.usage;
 			if (usage) {
@@ -204,6 +228,7 @@ export async function runDelegation(
 	onUpdate: OnUpdateCallback | undefined,
 	makeDetails: (results: SingleResult[]) => SubagentDetails,
 	includeLocationalAgentsInBehavioralChild: boolean,
+	now: () => number = () => performance.now(),
 ): Promise<SingleResult> {
 	const agent = resolveAgent(defaultCwd, agents, agentId);
 	if (!agent) {
@@ -240,6 +265,8 @@ export async function runDelegation(
 	if (!sessionId && retryWithCaller) sessionId = crypto.randomUUID();
 
 	const runAttempt = async (model: ResolvedAgentModel): Promise<SingleResult> => {
+		let receivedAt = 0;
+		const progress: ChildProgress = { speed: new TokenSpeedTracker(), now: () => receivedAt };
 		const args = ["--mode", "json", "-p"];
 		if (sessionId) args.push("--session-id", sessionId);
 		else args.push("--no-session");
@@ -301,7 +328,7 @@ export async function runDelegation(
 					if (!line.trim()) return;
 					contextEvidence ??= findContextLimitEvidence(line);
 					try {
-						processChildJsonEvent(JSON.parse(line), result, emit);
+						processChildJsonEvent(JSON.parse(line), result, emit, progress);
 					} catch {
 						result.stdout = result.stdout ? `${result.stdout}\n${line}` : line;
 					}
@@ -320,6 +347,8 @@ export async function runDelegation(
 					if (forceKillTimer) clearTimeout(forceKillTimer);
 					signal?.removeEventListener("abort", abort);
 					if (buffer.trim()) processLine(buffer);
+					// A killed stream may lack message_end. Never persist its live estimate as final.
+					result.tokenSpeed = progress.speed.aggregateMeasurement();
 					if (error) recordAgentError(lifecycle, error);
 					markAgentClosed(lifecycle, code);
 					result.exitCode = code;
@@ -327,9 +356,12 @@ export async function runDelegation(
 					result.errorMessage ??= lifecycle.errorMessage;
 					resolve();
 				};
-				proc.stdout.on("data", (data) => {
+				proc.stdout.setEncoding("utf8");
+				proc.stdout.on("data", (data: string) => {
+					// One receipt time per chunk: parsing/rendering buffered records is not generation time.
+					receivedAt = now();
 					markAgentActivity(lifecycle);
-					buffer += data.toString();
+					buffer += data;
 					const lines = buffer.split("\n");
 					buffer = lines.pop() || "";
 					for (const line of lines) processLine(line);

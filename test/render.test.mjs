@@ -102,6 +102,38 @@ test("requested speed in live, historical, and nested views comes only from stor
 	}
 });
 
+test("token speed is card-local, approximate live, and stable in compact/expanded historical and nested cards", () => {
+	const originalNow = Date.now;
+	try {
+		for (const expanded of [false, true]) {
+			const live = { mode: "live", tokens: 20, durationMs: 1000 };
+			const aggregate = { mode: "aggregate", tokens: 75, durationMs: 3000 };
+			const agent = result({ requestedSpeed: "ultrafast", tokenSpeed: live });
+			assert.match(compact(agent, { expanded, isPartial: true }), /Ultrafast requested · ~20\.0 tok\/s/);
+			for (const exitCode of [0, 1]) {
+				const historical = JSON.parse(JSON.stringify({ ...agent, exitCode, tokenSpeed: aggregate }));
+				const before = compact(historical, { expanded });
+				Date.now = () => 99999999999999;
+				assert.equal(compact(historical, { expanded }), before);
+				assert.match(before, /Ultrafast requested · 25\.0 tok\/s/);
+				assert.doesNotMatch(before, /~25/);
+			}
+			const nested = result({ tokenSpeed: aggregate, nestedSubagents: [
+				{ toolCallId: "a", toolName: "subagent", status: "running", details: { results: [result({ agent: "live-child", tokenSpeed: live })] } },
+				{ toolCallId: "b", toolName: "subagent", status: "completed", details: { results: [result({ agent: "done-child", exitCode: 0, tokenSpeed: aggregate })] } },
+			] });
+			const text = compact(JSON.parse(JSON.stringify(nested)), { expanded, isPartial: true });
+			assert.match(text, /live-child · ~20\.0 tok\/s/);
+			assert.match(text, /done-child · 25\.0 tok\/s/);
+			for (const tokenSpeed of [undefined, null, {}, { mode: "aggregate", tokens: "20", durationMs: 1000 }, { mode: "live", tokens: 20, durationMs: 0 }]) {
+				assert.doesNotMatch(compact(result({ tokenSpeed }), { expanded }), /tok\/s/);
+			}
+		}
+	} finally {
+		Date.now = originalNow;
+	}
+});
+
 test("expanded running result omits an empty output placeholder", () => {
 	const view = renderSubagentResult({ content: [], details: { results: [result()] } }, { expanded: true, isPartial: true }, theme, { state: {} });
 	assert.doesNotMatch(rendered(view), /─── Output ───|\(no output\)/);
