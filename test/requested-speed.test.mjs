@@ -59,7 +59,22 @@ test("Ultrafast requested snapshots final child env and child model/auth, never 
 			{ speed: "ultrafast", fast: "0", child: { ...astra, provider: "openai-codex-12" }, expected: "ultrafast" },
 			{ speed: "ultrafast", child: astra, oauth: false },
 			{ speed: "ultrafast", child: astra, missingAuthCheck: true },
-			{ speed: "ultrafast", fast: "1", child: sol },
+			{ speed: "ultrafast", fast: "0", child: sol, expected: "ultrafast" },
+			{ speed: "ULTRAFAST", fast: "1", child: sol, expected: "ultrafast" },
+			{ speed: "ultrafast", child: { ...sol, provider: "openai-codex" }, expected: "ultrafast" },
+			{ speed: "ultrafast", child: { ...sol, provider: "openai-codex-12" }, expected: "ultrafast" },
+			{ speed: "ultrafast", child: sol, oauth: false },
+			{ speed: "ultrafast", child: sol, missingAuthCheck: true },
+			{ speed: "ultrafast", child: { ...sol, provider: "other" } },
+			{ speed: "ultrafast", child: { ...sol, provider: "openai-codex-work" } },
+			{ speed: "ultrafast", child: { ...sol, id: "gpt-6-luna" } },
+			{ speed: "ultrafast", child: { ...sol, id: "GPT-6.1-SOL" } },
+			{ speed: "ultrafast", child: { ...sol, id: "gpt-6.1-sol-extra" } },
+			{ speed: " ultrafast", child: sol },
+			{ speed: "ultrafast ", child: sol },
+			{ speed: "standard", fast: "1", child: sol },
+			{ speed: "fast", fast: "1", child: sol },
+			{ fast: "1", child: sol },
 			{ speed: "ultrafast", child: { ...astra, id: "GPT-6-ASTRA" } },
 			{ speed: "ultrafast", child: { ...astra, provider: "other" } },
 			{ speed: "ultrafast", child: { ...astra, provider: "openai-codex-work" } },
@@ -79,7 +94,7 @@ test("Ultrafast requested snapshots final child env and child model/auth, never 
 				if (value === undefined) delete process.env[key];
 				else process.env[key] = value;
 			}
-			// Sol parent may have FAST=0 while an explicitly selected Astra child is eligible.
+			// Parent FAST never establishes child eligibility.
 			const ctx = context(root, item.child ? sol : undefined, item.child ? [item.child] : [], item.oauth ?? true);
 			if (item.missingAuthCheck) delete ctx.modelRegistry.isUsingOAuth;
 			else ctx.modelRegistry.isUsingOAuth = (child) => { assert.equal(child, item.child); return item.oauth ?? true; };
@@ -103,8 +118,10 @@ test("Ultrafast requested snapshots final child env and child model/auth, never 
 		process.env.PI_CHATGPT_SPEED = "ultrafast";
 		process.env.PI_CHATGPT_FAST = "0";
 		const sameCaller = definition(root);
-		const same = await runDelegation({ appendEntry() {} }, context(root, astra, []), root, [sameCaller], sameCaller.id, "new", "work", undefined, undefined, details, false);
-		assert.equal(same.requestedSpeed, "ultrafast");
+		for (const model of [astra, sol]) {
+			const same = await runDelegation({ appendEntry() {} }, context(root, model, []), root, [sameCaller], sameCaller.id, "new", "work", undefined, undefined, details, false);
+			assert.equal(same.requestedSpeed, "ultrafast");
+		}
 
 		// Prompt preparation yields before spawn: snapshot the final env, not delegation entry.
 		sameCaller.systemPrompt = "Test prompt";
@@ -123,7 +140,7 @@ test("resumed launches capture new requested intent without relabeling prior det
 		trackedSessions.clear();
 		await withChild(async (root) => {
 			const agent = { ...definition(root), resumable: true };
-			const ctx = context(root, astra, []);
+			const ctx = context(root, sol, []);
 			const results = [];
 			for (const [session, speed] of [["new", "ultrafast"], ["resume", "standard"], ["resume", "ultrafast"]]) {
 				process.env.PI_CHATGPT_SPEED = speed;
@@ -146,8 +163,10 @@ test("Ultrafast intent is recomputed for each actual locational retry launch", a
 		const location = join(root, "owner");
 		mkdirSync(location);
 		for (const [selected, parent, changeEnv, expected] of [
-			[sol, astra, false, [undefined, "ultrafast"]],
-			[astra, sol, false, ["ultrafast", undefined]],
+			[sol, astra, false, ["ultrafast", "ultrafast"]],
+			[astra, sol, false, ["ultrafast", "ultrafast"]],
+			[{ ...sol, id: "gpt-6-luna" }, sol, false, [undefined, "ultrafast"]],
+			[sol, { ...sol, id: "gpt-6-luna" }, false, ["ultrafast", undefined]],
 			[{ ...astra, provider: "openai-codex-1" }, astra, true, ["ultrafast", undefined]],
 		]) {
 			writeFileSync(join(location, "SUBAGENTS.md"), `---\nmodel: ${ref(selected)}\nresumable: false\n---\n`);

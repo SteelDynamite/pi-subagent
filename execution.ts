@@ -58,9 +58,9 @@ function parseModelCandidates(value: string | undefined): string[] {
 	return value?.split(",").map((model) => model.trim()).filter(Boolean) ?? [];
 }
 
-function resolveAvailableModel(candidates: string[], ctx: ExtensionContext): { model?: string; contextWindow?: number } {
+function resolveAvailableModel(candidates: string[], ctx: ExtensionContext, allowBareId = true): { model?: string; contextWindow?: number } {
 	for (const candidate of candidates) {
-		const match = ctx.modelRegistry.getAvailable().find((model) => `${model.provider}/${model.id}` === candidate || model.id === candidate);
+		const match = ctx.modelRegistry.getAvailable().find((model) => `${model.provider}/${model.id}` === candidate || (allowBareId && model.id === candidate));
 		if (match) return { model: `${match.provider}/${match.id}`, contextWindow: match.contextWindow };
 	}
 	return {};
@@ -69,20 +69,23 @@ function resolveAvailableModel(candidates: string[], ctx: ExtensionContext): { m
 export function resolveAgentModel(agent: AgentConfig, ctx: ExtensionContext): ResolvedAgentModel {
 	const callerModel = formatModelRef(ctx.model);
 	const callerContextWindow = ctx.model?.contextWindow;
-	if (agent.kind === "behavioral" && ctx.model && ctx.model.id === agent.whenCallerModelId && agent.thenModel === "caller") {
+	const matches = agent.kind === "behavioral" && !!ctx.model && (Array.isArray(agent.whenCallerModelId)
+		? agent.whenCallerModelId.includes(ctx.model.id) : agent.whenCallerModelId === ctx.model.id);
+	if (matches && agent.thenModel === "caller") {
 		return { model: callerModel, thinking: agent.thenThinking, contextWindow: callerContextWindow, source: "caller" };
 	}
-	const thinking = agent.thinking;
-	const explicit = parseModelCandidates(agent.model);
+	const thinking = matches ? agent.thenThinking : agent.thinking;
+	const configuredModel = matches ? agent.thenModel : agent.model;
+	const explicit = parseModelCandidates(configuredModel);
 	if (explicit.length) {
-		const resolved = resolveAvailableModel(explicit, ctx);
+		const resolved = resolveAvailableModel(explicit, ctx, !matches);
 		if (resolved.model) return { ...resolved, thinking, source: "agent", fallbackModel: callerModel, fallbackContextWindow: callerContextWindow };
 		return {
 			model: callerModel,
 			thinking,
 			contextWindow: callerContextWindow,
 			source: "caller",
-			warning: `No configured model from "${agent.model}" for ${agent.id}; using caller model${callerModel ? ` ${callerModel}` : ""}.`,
+			warning: `No configured model from "${configuredModel}" for ${agent.id}; using caller model${callerModel ? ` ${callerModel}` : ""}.`,
 		};
 	}
 	if (agent.kind === "locational") {
@@ -309,7 +312,7 @@ export async function runDelegation(
 					const childModel = model.model === formatModelRef(ctx.model) ? ctx.model
 						: ctx.modelRegistry.getAvailable().find((candidate) => formatModelRef(candidate) === model.model);
 					// pi-chatgpt's Ultrafast eligibility; parent FAST describes the parent, not this child.
-					if (childModel?.id === "gpt-6-astra" && /^(?:openai|openai-codex(?:-\d+)?)$/.test(childModel.provider) && ctx.modelRegistry.isUsingOAuth?.(childModel)) {
+					if (childModel && ["gpt-6-astra", "gpt-6.1-sol"].includes(childModel.id) && /^(?:openai|openai-codex(?:-\d+)?)$/.test(childModel.provider) && ctx.modelRegistry.isUsingOAuth?.(childModel)) {
 						result.requestedSpeed = "ultrafast";
 					}
 				}

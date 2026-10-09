@@ -66,14 +66,30 @@ test("behavioral caller overrides require a complete, valid flat rule", () => {
 			assert.equal(conditional.thenThinking, thinking);
 			assert.equal(conditional.thinking, undefined);
 		}
+		for (const [value, expected] of [
+			["gpt-6-astra", "gpt-6-astra"],
+			["[gpt-6-astra]", ["gpt-6-astra"]],
+			['["gpt-6-astra", "gpt-6.1-sol"]', ["gpt-6-astra", "gpt-6.1-sol"]],
+			['\n  - gpt-6-astra\n  - "gpt-6.1-sol"', ["gpt-6-astra", "gpt-6.1-sol"]],
+			["[vendor/model, OTHER]", ["vendor/model", "OTHER"]],
+		]) {
+			for (const target of ["caller", "openai/gpt-6.1-sol", "openai/gpt-6-astra", "provider/vendor/model"]) {
+				writeFileSync(definition, `---\nwhenCallerModelId: ${value}\nthenModel: ${target}\nthenThinking: low\n---\n`);
+				const discovery = discoverAgents(root, true, { includeLocationalAgents: false });
+				assert.deepEqual(discovery.errors, []);
+				const conditional = discovery.agents.find((agent) => agent.id === "conditional");
+				assert.deepEqual(conditional.whenCallerModelId, expected);
+				assert.equal(conditional.thenModel, target);
+			}
+		}
 		const invalid = [];
 		for (let mask = 1; mask < 7; mask++) {
 			invalid.push([fields.filter((_field, index) => mask & (1 << index)).join("\n"), /require .* together/]);
 		}
-		for (const value of ["", '""', "true", "[gpt-6-astra]", "gpt-6-astra,other", "gpt-*", "gpt-?", '" gpt-6-astra"', '"gpt 6"']) {
-			invalid.push([`whenCallerModelId: ${value}\n${fields.slice(1).join("\n")}`, /whenCallerModelId must be one exact model ID/]);
+		for (const value of ["", '""', "true", "[]", '[gpt-6-astra, ""]', "[gpt-6-astra, gpt-*]", '[gpt-6-astra, " gpt-6.1-sol"]', "[[gpt-6-astra]]", "\n  - gpt-6-astra\n  - false", "gpt-6-astra,other", "gpt-*", "gpt-?", '" gpt-6-astra"', '"gpt 6"']) {
+			invalid.push([`whenCallerModelId: ${value}\n${fields.slice(1).join("\n")}`, /whenCallerModelId must be an exact model ID or a nonempty list/]);
 		}
-		for (const value of ["", "true", "[caller]", "inherit", "openai/gpt-6-astra"]) {
+		for (const value of ["", "true", "[caller]", "inherit", "gpt-6.1-sol", "[openai/gpt-6.1-sol]", "openai/", "/gpt-6.1-sol", "openai/gpt-*", "openai/gpt-?", "openai/gpt-6-astra,openai/gpt-6.1-sol", '" openai/gpt-6.1-sol"', '"openai/gpt 6"']) {
 			invalid.push([`${fields[0]}\nthenModel: ${value}\n${fields[2]}`, /thenModel must be "caller"/]);
 		}
 		for (const value of ["", "false", "[low]", "deepest", "LOW"]) {
@@ -86,7 +102,7 @@ test("behavioral caller overrides require a complete, valid flat rule", () => {
 			assert.equal(discovery.agents.some((agent) => agent.id === "conditional"), false, body);
 			assert.match(discovery.errors.join("\n"), error, body);
 		}
-		for (const body of [...fields, fields.join("\n")]) {
+		for (const body of [...fields, fields.join("\n"), "whenCallerModelId: [gpt-6-astra, gpt-6.1-sol]\nthenModel: openai/gpt-6.1-sol\nthenThinking: low"]) {
 			writeFileSync(join(root, "SUBAGENTS.md"), `---\n${body}\n---\n`);
 			const locational = loadLocationalAgent(root);
 			assert.equal(locational.agent, undefined);

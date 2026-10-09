@@ -63,7 +63,7 @@ Structured `details.results[].tokenSpeed` contains `{ mode: "live" | "aggregate"
 
 Subagent status may show **Ultrafast requested**. The optional `requestedSpeed: "ultrafast"` result field records launch-time intent and drives compact, expanded, historical, and nested displays. It is captured separately for each launch, including resume and model-fallback retries; later parent setting changes do not relabel an existing result.
 
-The label requires the final child environment's `PI_CHATGPT_SPEED`, lowercased without trimming, to equal `ultrafast`, plus child model ID `gpt-6-astra`, provider `openai`, `openai-codex`, or `openai-codex-<digits>`, and OAuth according to Pi's model registry. Eligibility is checked for the child, not the parent. `PI_CHATGPT_FAST` describes the parent's effective acceleration and is not used to infer this label; `FAST=0` does not prevent an eligible child from requesting Ultrafast.
+The label requires the final child environment's `PI_CHATGPT_SPEED`, lowercased without trimming, to equal `ultrafast`, plus child model ID `gpt-6-astra` or `gpt-6.1-sol`, provider `openai`, `openai-codex`, or `openai-codex-<digits>`, and OAuth according to Pi's model registry. Eligibility is checked for the child, not the parent. `PI_CHATGPT_FAST` describes the parent's effective acceleration and is not used to infer this label; `FAST=0` does not prevent an eligible child from requesting Ultrafast.
 
 This snapshot assumes the child loads `pi-chatgpt` with the same effective authentication configuration. It is **not** proof of a request payload, server acceptance, or delivered service tier, and does not track later changes inside the child. No label means unknown—not confirmed Standard. Fast, persistent speed-config fallback, unavailable model/auth information, and older results without the field remain unlabeled. Environment inheritance itself is unchanged.
 
@@ -86,20 +86,28 @@ A behavioral definition may declare one flat conditional rule alongside its exis
 
 ```yaml
 model: openai/gpt-6-luna
-whenCallerModelId: gpt-6-astra
-thenModel: caller
+whenCallerModelId: [gpt-6-astra, gpt-6.1-sol]
+thenModel: openai/gpt-6.1-sol
 thenThinking: low
 ```
 
 All three conditional fields are required together; locational definitions reject them.
 
-- `whenCallerModelId`: exact, case-sensitive **model ID**, independent of provider. It matches the immediate delegating session's model, including nested delegation, not the original ancestor's model. No whitespace, lists, comma-separated candidates, or wildcards. This is not a `provider/model` selector; slashes, if present, are literal parts of the model ID.
-- `thenModel`: only `caller` is supported. On a match, use that caller's exact provider and model directly, not a registry search for another provider.
+- `whenCallerModelId`: one exact, case-sensitive **model ID** or a nonempty YAML list of IDs (inline or block). Any listed ID matches; provider and speed are irrelevant. It checks the immediate delegating session, including nested delegation, not the original ancestor. IDs cannot contain whitespace, commas, brackets, or wildcards. This is not a `provider/model` selector; slashes are literal parts of an ID. Existing scalar conditions remain supported.
+- `thenModel`: `caller` or one explicit `provider/model` selector, without whitespace, commas, brackets, or wildcards. `caller` uses the immediate caller's exact provider/model directly, without a registry lookup. An explicit target selects that exact provider/model from Pi's available registry; it never substitutes another provider. If unavailable, it warns and uses the caller model with `thenThinking`, not the ordinary definition's defaults.
 - `thenThinking`: one supported thinking level, overriding the ordinary `thinking` field on a match.
 
 Nonmatching or unavailable caller identity leaves ordinary `model` and `thinking` behavior unchanged. The winning bundled/user/project definition owns the complete rule; fields are not merged across definitions. Invalid rules report configuration errors and are not loaded.
 
-Bundled definitions match `gpt-6-astra` at **any speed**: scout uses caller + `low`, worker caller + `medium`, reviewer caller + `xhigh`. All other callers, including `gpt-6.1-sol`, retain the existing models (scout `openai/gpt-6-luna`, worker `openai/gpt-6.1-sol`, reviewer `openai/gpt-6-astra`) and omitted thinking. Speed and thinking are independent; inherited environment, including `PI_CHATGPT_SPEED`, passes through unchanged.
+Bundled definitions match **both `gpt-6-astra` and `gpt-6.1-sol`, at every caller speed**:
+
+| Agent | Target | Thinking |
+|---|---|---|
+| Scout | `openai/gpt-6.1-sol` | `low` |
+| Worker | `openai/gpt-6.1-sol` | `medium` |
+| Reviewer | `openai/gpt-6-astra` | `xhigh` |
+
+These explicit targets use `openai` even when the matching caller uses another provider. All unrelated callers retain the existing models (scout `openai/gpt-6-luna`, worker `openai/gpt-6.1-sol`, reviewer `openai/gpt-6-astra`) and omitted thinking. Speed and thinking are independent; inherited environment, including `PI_CHATGPT_SPEED`, passes through unchanged. Ultrafast service still depends on the child's provider, authentication, and `pi-chatgpt` support.
 
 Rules are reevaluated for every delegation, including resume. Effective model and declared thinking are passed to the child and reported in results; Pi may clamp thinking to model support. If a custom resumable agent switches to an unmatched rule with omitted thinking, no thinking flag is sent: Pi's saved effort may persist. No restoration mechanism is added. Bundled behavioral agents remain nonresumable. Behavioral provider failures do not gain a runtime fallback retry.
 

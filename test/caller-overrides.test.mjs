@@ -8,40 +8,52 @@ import { resolveAgentModel, runDelegation } from "../execution.ts";
 import { subagentSettings, trackedSessions } from "../state.ts";
 
 const defaults = [
-	["scout", "gpt-6-luna", "low"],
-	["worker", "gpt-6.1-sol", "medium"],
-	["reviewer", "gpt-6-astra", "xhigh"],
+	["scout", "gpt-6-luna", "low", "gpt-6.1-sol"],
+	["worker", "gpt-6.1-sol", "medium", "gpt-6.1-sol"],
+	["reviewer", "gpt-6-astra", "xhigh", "gpt-6-astra"],
 ];
 const available = defaults.map(([_id, id]) => ({ provider: "openai", id, contextWindow: 2000 }));
 const caller = (id = "gpt-6-astra", provider = "alternate") => ({ provider, id, contextWindow: 4000 });
 const context = (model) => ({ model, modelRegistry: { getAvailable: () => available } });
 const details = (results) => ({ includeLocationalAgents: false, locationalAgents: [], results });
 
-test("bundled caller rules preserve providers, defaults, and definition state", () => {
+test("bundled caller rules pin both matching callers to OpenAI and preserve unrelated defaults", () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-caller-models-"));
 	const previous = process.env.PI_CODING_AGENT_DIR;
 	try {
 		process.env.PI_CODING_AGENT_DIR = root;
 		const discovery = discoverAgents(root, false, { includeLocationalAgents: false });
 		assert.deepEqual(discovery.errors, []);
-		for (const [id, model, thinking] of defaults) {
+		for (const [id, model, thinking, target] of defaults) {
 			const agent = discovery.agents.find((item) => item.id === id);
 			const original = structuredClone(agent);
 			assert.equal(agent.resumable, false);
 			assert.equal(agent.model, `openai/${model}`);
 			assert.equal(agent.thinking, undefined);
-			for (const provider of ["openai", "alternate"]) {
-				// The alternate provider need not occur in getAvailable(): select the actual caller directly.
-				assert.deepEqual(resolveAgentModel(agent, context(caller("gpt-6-astra", provider))), {
-					model: `${provider}/gpt-6-astra`, thinking, contextWindow: 4000, source: "caller",
-				});
+			assert.deepEqual(agent.whenCallerModelId, ["gpt-6-astra", "gpt-6.1-sol"]);
+			assert.equal(agent.thenModel, `openai/${target}`);
+			for (const provider of ["openai", "openai-codex-1", "alternate"]) {
+				for (const modelId of ["gpt-6-astra", "gpt-6.1-sol"]) {
+					assert.deepEqual(resolveAgentModel(agent, context(caller(modelId, provider))), {
+						model: `openai/${target}`, thinking, contextWindow: 2000, source: "agent",
+						fallbackModel: `${provider}/${modelId}`, fallbackContextWindow: 4000,
+					});
+				}
 			}
-			for (const modelId of ["gpt-6.1-sol", "other", "GPT-6-ASTRA", "gpt-6-astra-extra", "openai/gpt-6-astra", undefined]) {
+			for (const modelId of ["other", "GPT-6-ASTRA", "GPT-6.1-SOL", "gpt-6-astra-extra", "gpt-6.1-sol-extra", "openai/gpt-6-astra", "openai/gpt-6.1-sol", undefined]) {
 				const resolved = resolveAgentModel(agent, context(modelId === undefined ? undefined : caller(modelId)));
 				assert.equal(resolved.model, `openai/${model}`);
 				assert.equal(resolved.thinking, undefined);
 				assert.equal(resolved.source, "agent");
 			}
+			// Use the bundled worker's selected Sol as the actual immediate caller of each role.
+			const worker = discovery.agents.find((item) => item.id === "worker");
+			const outer = resolveAgentModel(worker, context(caller()));
+			const nestedCaller = available.find((item) => `${item.provider}/${item.id}` === outer.model);
+			assert.equal(nestedCaller.id, "gpt-6.1-sol");
+			const nested = resolveAgentModel(agent, context(nestedCaller));
+			assert.equal(nested.model, `openai/${target}`);
+			assert.equal(nested.thinking, thinking);
 			assert.deepEqual(agent, original);
 		}
 	} finally {
@@ -78,16 +90,54 @@ test("caller rules use the immediate context on every nested delegation, never a
 	assert.equal(inherited.thinking, "high");
 });
 
-test("child launches apply caller model/effort on new and resume without changing speed or fallback", async () => {
+test("list rules use immediate caller identity, exact target provider, and existing unavailable-target fallback", () => {
+	const agent = {
+		kind: "behavioral", id: "custom-list", model: "openai/gpt-6-luna", thinking: "high",
+		whenCallerModelId: ["gpt-6-astra", "gpt-6.1-sol"], thenModel: "openai/gpt-6.1-sol", thenThinking: "low",
+	};
+	const aliases = [caller("openai/gpt-6.1-sol"), caller("gpt-6.1-sol")];
+	for (const modelId of agent.whenCallerModelId) {
+		const ctx = { ...context(caller(modelId)), modelRegistry: { getAvailable: () => [...aliases, ...available] } };
+		const resolved = resolveAgentModel(agent, ctx);
+		assert.equal(resolved.model, "openai/gpt-6.1-sol");
+		assert.equal(resolved.thinking, "low");
+		const [provider, id] = resolved.model.split("/");
+		const nested = resolveAgentModel(agent, context(caller(id, provider)));
+		assert.equal(nested.model, "openai/gpt-6.1-sol");
+		assert.equal(nested.thinking, "low");
+		const inherited = resolveAgentModel({ ...agent, thenModel: "caller" }, ctx);
+		assert.equal(inherited.model, `alternate/${modelId}`);
+		assert.equal(inherited.source, "caller");
+		assert.equal(inherited.contextWindow, 4000);
+
+		// Neither a matching bare ID on another provider nor a literal selector as ID can satisfy the target.
+		ctx.modelRegistry.getAvailable = () => aliases;
+		const unavailable = resolveAgentModel(agent, ctx);
+		assert.equal(unavailable.model, `alternate/${modelId}`);
+		assert.equal(unavailable.thinking, "low");
+		assert.equal(unavailable.source, "caller");
+		assert.match(unavailable.warning, /No configured model from "openai\/gpt-6\.1-sol"/);
+	}
+	const unrelated = resolveAgentModel(agent, context(caller("other")));
+	assert.equal(unrelated.model, "openai/gpt-6-luna");
+	assert.equal(unrelated.thinking, "high");
+	assert.equal(resolveAgentModel({ ...agent, kind: "locational" }, context(caller())).model, "openai/gpt-6-luna");
+	const literalId = { ...agent, whenCallerModelId: ["vendor/model"], thenModel: "caller" };
+	assert.equal(resolveAgentModel(literalId, context(caller("model", "vendor"))).thinking, "high");
+	assert.equal(resolveAgentModel(literalId, context(caller("vendor/model"))).thinking, "low");
+});
+
+test("explicit caller targets preserve speed inheritance, resume effort, and behavioral no-retry", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-caller-launch-"));
 	const originalArgv = process.argv[1];
-	const envKeys = ["PI_CODING_AGENT_DIR", "PI_SUBAGENT_TEST_STATE_FILE", "PI_CHATGPT_SPEED", "PI_SUBAGENT_DEPTH"];
+	const envKeys = ["PI_CODING_AGENT_DIR", "PI_SUBAGENT_TEST_STATE_FILE", "PI_CHATGPT_SPEED", "PI_CHATGPT_FAST", "PI_SUBAGENT_DEPTH"];
 	const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 	const originalReuse = subagentSettings.reuseEnabled;
 	const originalTracked = new Map(trackedSessions);
 	try {
 		process.env.PI_CODING_AGENT_DIR = root;
 		process.env.PI_SUBAGENT_DEPTH = "1";
+		process.env.PI_CHATGPT_FAST = "0";
 		trackedSessions.clear();
 		subagentSettings.reuseEnabled = true;
 		const stateFile = join(root, "calls.json");
@@ -97,7 +147,7 @@ test("child launches apply caller model/effort on new and resume without changin
 const fs = require("node:fs");
 const args = process.argv.slice(2);
 const calls = JSON.parse(fs.readFileSync(process.env.PI_SUBAGENT_TEST_STATE_FILE, "utf8"));
-calls.push({ args, speed: process.env.PI_CHATGPT_SPEED, depth: process.env.PI_SUBAGENT_DEPTH });
+calls.push({ args, speed: process.env.PI_CHATGPT_SPEED, fast: process.env.PI_CHATGPT_FAST, depth: process.env.PI_SUBAGENT_DEPTH });
 fs.writeFileSync(process.env.PI_SUBAGENT_TEST_STATE_FILE, JSON.stringify(calls));
 if (args.at(-1) === "Task: fail") { process.stderr.write("provider unavailable"); process.exit(1); }
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }));
@@ -109,19 +159,25 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 			...context(caller()), cwd: root,
 			sessionManager: { getBranch: () => [], buildContextEntries: () => [] },
 		};
+		ctx.modelRegistry.isUsingOAuth = () => true;
 		const expected = [];
-		for (const speed of [undefined, "ultrafast"]) {
+		for (const speed of [undefined, "standard", "fast", "ultrafast"]) {
 			if (speed === undefined) delete process.env.PI_CHATGPT_SPEED;
 			else process.env.PI_CHATGPT_SPEED = speed;
-			for (const modelId of ["gpt-6-astra", "gpt-6.1-sol"]) {
+			for (const modelId of ["gpt-6-astra", "gpt-6.1-sol", "other"]) {
 				ctx.model = caller(modelId);
-				for (const [id, baseModel, effort] of defaults) {
-					const model = modelId === "gpt-6-astra" ? "alternate/gpt-6-astra" : `openai/${baseModel}`;
-					const thinking = modelId === "gpt-6-astra" ? effort : undefined;
+				const parent = structuredClone(ctx.model);
+				for (const [id, baseModel, effort, target] of defaults) {
+					const model = `openai/${modelId === "other" ? baseModel : target}`;
+					const thinking = modelId === "other" ? undefined : effort;
 					const result = await runDelegation({ appendEntry() {} }, ctx, root, agents, id, "new", "launch", undefined, undefined, details, false);
 					assert.equal(result.exitCode, 0);
 					assert.equal(result.model, model);
 					assert.equal(result.agentThinking, thinking);
+					assert.equal(result.requestedSpeed, speed === "ultrafast" && model !== "openai/gpt-6-luna" ? "ultrafast" : undefined);
+					assert.deepEqual(ctx.model, parent);
+					assert.equal(process.env.PI_CHATGPT_SPEED, speed);
+					assert.equal(process.env.PI_CHATGPT_FAST, "0");
 					expected.push({ model, thinking, speed });
 				}
 			}
@@ -129,18 +185,20 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 		const flag = (args, name) => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
 		let calls = JSON.parse(readFileSync(stateFile, "utf8"));
 		assert.deepEqual(calls.map(({ args, speed }) => ({ model: flag(args, "--model"), thinking: flag(args, "--thinking"), speed })), expected);
-		assert.ok(calls.every(({ args, depth }) => args.includes("--no-session") && !args.includes("--session-id") && depth === "2"));
+		assert.ok(calls.every(({ args, depth, fast }) => args.includes("--no-session") && !args.includes("--session-id") && depth === "2" && fast === "0"));
 
 		const resumable = { ...agents.find((agent) => agent.id === "worker"), id: "custom-resumable", resumable: true, thinking: "high" };
 		const resumeCases = [
-			["new", caller(), "medium", "alternate/gpt-6-astra"],
-			["resume", caller("gpt-6-astra", "nested-provider"), "medium", "nested-provider/gpt-6-astra"],
-			["resume", caller("gpt-6.1-sol"), "high", "openai/gpt-6.1-sol"],
-			["resume", caller(), "off", "alternate/gpt-6-astra"],
-			["resume", caller("gpt-6.1-sol"), undefined, "openai/gpt-6.1-sol"],
+			["new", caller(), "medium", "openai/gpt-6.1-sol", "openai/gpt-6.1-sol"],
+			["resume", caller("gpt-6.1-sol", "nested-provider"), "medium", "openai/gpt-6.1-sol", "openai/gpt-6.1-sol"],
+			["resume", caller("other"), "high", "openai/gpt-6.1-sol", "openai/gpt-6.1-sol"],
+			["resume", caller(), "off", "alternate/gpt-6-astra", "caller"],
+			["resume", caller("gpt-6.1-sol"), "off", "alternate/gpt-6.1-sol", "caller"],
+			["resume", caller("other"), undefined, "openai/gpt-6.1-sol", "caller"],
 		];
-		for (const [session, model, thinking, expectedModel] of resumeCases) {
+		for (const [session, model, thinking, expectedModel, target] of resumeCases) {
 			ctx.model = model;
+			resumable.thenModel = target;
 			if (thinking === "off") resumable.thenThinking = "off";
 			if (thinking === undefined) delete resumable.thinking;
 			const result = await runDelegation({ appendEntry() {} }, ctx, root, [resumable], resumable.id, session, "resume", undefined, undefined, details, false);

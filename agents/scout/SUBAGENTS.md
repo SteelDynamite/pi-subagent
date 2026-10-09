@@ -2,8 +2,8 @@
 description: Fast codebase recon that returns compressed context to the orchestrating parent
 tools: read, grep, find, ls, bash
 model: openai/gpt-6-luna
-whenCallerModelId: gpt-6-astra
-thenModel: caller
+whenCallerModelId: [gpt-6-astra, gpt-6.1-sol]
+thenModel: openai/gpt-6.1-sol
 thenThinking: low
 ---
 

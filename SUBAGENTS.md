@@ -6,7 +6,7 @@ Keep delegation foreground-managed: each `subagent` call launches one isolated P
 
 ## Model configuration maintenance
 
-Pin explicit OpenAI model selectors as `openai/<model-id>`; preserve model IDs and declared thinking levels. Behavioral `whenCallerModelId` is a literal model ID, not a provider-qualified selector; `thenModel: caller` preserves the immediate caller's provider. Keep conditional policy in definitions, never agent-name dispatch or speed-dependent matching. See README's behavioral caller overrides for field validation and resume semantics.
+Pin explicit OpenAI model selectors as `openai/<model-id>`; preserve model IDs and declared thinking levels. Behavioral `whenCallerModelId` accepts a literal model ID or a nonempty YAML list of literal IDs, not provider-qualified selectors. `thenModel: caller` preserves the immediate caller's provider; an explicit `thenModel: provider/model` pins the target provider. Bundled rules match Astra and Sol 6.1: scout uses `openai/gpt-6.1-sol` low, worker the same model medium, reviewer `openai/gpt-6-astra` xhigh. Keep conditional policy in definitions, never agent-name dispatch or speed-dependent matching. See README's behavioral caller overrides for field validation and resume semantics.
 
 This root declares neither model nor thinking: locational selection uses `PI_SUBAGENT_LOCATIONAL_PREFERRED_MODELS` when available, otherwise the caller model.
 

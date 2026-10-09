@@ -1,8 +1,8 @@
 ---
 description: General-purpose subagent with full capabilities, isolated context
 model: openai/gpt-6.1-sol
-whenCallerModelId: gpt-6-astra
-thenModel: caller
+whenCallerModelId: [gpt-6-astra, gpt-6.1-sol]
+thenModel: openai/gpt-6.1-sol
 thenThinking: medium
 ---
 

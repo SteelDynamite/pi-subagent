@@ -14,8 +14,8 @@ export interface AgentConfig {
 	tools?: string[];
 	model?: string;
 	thinking?: ThinkingLevel;
-	whenCallerModelId?: string;
-	thenModel?: "caller";
+	whenCallerModelId?: string | string[];
+	thenModel?: string;
 	thenThinking?: ThinkingLevel;
 	manifest: boolean;
 	systemPrompt: string;
@@ -125,13 +125,14 @@ function loadInstructions(filePath: string, id: string, origin: AgentOrigin, kin
 	if (hasCallerOverride) {
 		if (kind !== "behavioral") return { error: `${filePath}: caller overrides are supported only for behavioral agents` };
 		if (CALLER_OVERRIDE_KEYS.some((key) => frontmatter[key] === undefined)) return { error: `${filePath}: caller overrides require whenCallerModelId, thenModel, and thenThinking together` };
-		if (typeof whenCallerModelId !== "string" || !whenCallerModelId || /[\s,*?\[\]]/.test(whenCallerModelId)) return { error: `${filePath}: whenCallerModelId must be one exact model ID, without whitespace, candidates, or wildcards` };
-		if (frontmatter.thenModel !== "caller") return { error: `${filePath}: thenModel must be "caller"` };
+		const callerIds = Array.isArray(whenCallerModelId) ? whenCallerModelId : [whenCallerModelId];
+		if (!callerIds.length || callerIds.some((id) => typeof id !== "string" || !id || /[\s,*?\[\]]/.test(id))) return { error: `${filePath}: whenCallerModelId must be an exact model ID or a nonempty list of exact model IDs, without whitespace, comma-separated candidates, or wildcards` };
+		if (frontmatter.thenModel !== "caller" && (typeof frontmatter.thenModel !== "string" || !/^[^/\s,*?\[\]]+\/[^\s,*?\[\]]+$/.test(frontmatter.thenModel))) return { error: `${filePath}: thenModel must be "caller" or one explicit provider/model selector` };
 		if (!thenThinking) return { error: `${filePath}: unsupported thenThinking level "${String(frontmatter.thenThinking)}". Expected one of: ${THINKING_LEVELS.join(", ")}` };
 	}
 	const rootDir = options.rootDir ?? path.dirname(filePath);
 	const rawBody = options.readBody ? resolveAtIncludes(body, rootDir).trim() : "";
-	return { agent: { id, description: frontmatter.description === undefined ? "" : String(frontmatter.description), tools: parseTools(frontmatter.tools), model: frontmatter.model === undefined ? undefined : String(frontmatter.model), thinking, ...(hasCallerOverride ? { whenCallerModelId: whenCallerModelId as string, thenModel: "caller" as const, thenThinking } : {}), manifest: parseBoolean(frontmatter.manifest, true), resumable: parseBoolean(frontmatter.resumable, kind === "locational"), systemPrompt: rawBody || (kind === "locational" ? DEFAULT_LOCATIONAL_PROMPT : ""), origin, kind, filePath, rootDir } };
+	return { agent: { id, description: frontmatter.description === undefined ? "" : String(frontmatter.description), tools: parseTools(frontmatter.tools), model: frontmatter.model === undefined ? undefined : String(frontmatter.model), thinking, ...(hasCallerOverride ? { whenCallerModelId: whenCallerModelId as string | string[], thenModel: frontmatter.thenModel as string, thenThinking } : {}), manifest: parseBoolean(frontmatter.manifest, true), resumable: parseBoolean(frontmatter.resumable, kind === "locational"), systemPrompt: rawBody || (kind === "locational" ? DEFAULT_LOCATIONAL_PROMPT : ""), origin, kind, filePath, rootDir } };
 }
 
 function loadBehavioralAgentsFromDir(dir: string, origin: "bundled" | "user" | "project"): { agents: AgentConfig[]; errors: string[] } {
