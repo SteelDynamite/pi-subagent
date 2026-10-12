@@ -64,7 +64,7 @@ function containingLocationalRoot(cwd: string): string | undefined {
 
 export function getGuardedLocationalRoots(cwd: string): string[] {
 	const active = environmentRoot(CURRENT_LOCATIONAL_ROOT_ENV);
-	const roots = scanLocationalAgents(cwd).agents.map((agent) => canonicalPath(agent.rootDir));
+	const roots = scanLocationalAgents(cwd).roots.map(canonicalPath);
 	const containing = containingLocationalRoot(cwd);
 	if (containing) roots.push(containing);
 	return [...new Set(roots)].filter((root) => root !== active);
@@ -89,7 +89,7 @@ export function resolveFilesystemTarget(cwd: string, value: string, options: { a
 		|| trimmed === ".."
 		|| trimmed.startsWith("~/")
 		|| /[\\/]/.test(trimmed)
-		|| Boolean(options.allowBare && fs.existsSync(path.resolve(cwd, trimmed)));
+		|| Boolean(options.allowBare);
 	if (!isPath) return null;
 	const expanded = trimmed.startsWith("~/") ? path.join(os.homedir(), trimmed.slice(2)) : trimmed;
 	return canonicalPath(path.resolve(cwd, expanded));
@@ -129,7 +129,7 @@ function shellTokens(command: string): string[] {
 	return tokens;
 }
 
-/** Conservatively extracts path-like shell arguments so built-in bash cannot bypass locational boundaries. */
+/** Extracts explicit path-like shell arguments; dynamic and recursive shell access is not sandboxed. */
 export function commandFilesystemTargets(command: string, cwd: string): string[] {
 	const tokens = shellTokens(command);
 	const targets: string[] = [];

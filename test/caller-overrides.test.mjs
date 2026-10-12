@@ -156,7 +156,7 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 		process.env.PI_SUBAGENT_TEST_STATE_FILE = stateFile;
 		const agents = discoverAgents(root, false, { includeLocationalAgents: false }).agents;
 		const ctx = {
-			...context(caller()), cwd: root,
+			...context(caller()), cwd: root, isProjectTrusted: () => true,
 			sessionManager: { getBranch: () => [], buildContextEntries: () => [] },
 		};
 		ctx.modelRegistry.isUsingOAuth = () => true;

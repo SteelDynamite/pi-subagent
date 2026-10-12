@@ -12,7 +12,7 @@ const ref = (model) => model ? `${model.provider}/${model.id}` : undefined;
 const details = (results) => ({ includeLocationalAgents: false, locationalAgents: [], results });
 const definition = (root, model) => ({ id: "speed-test", kind: "behavioral", origin: "user", rootDir: root, filePath: join(root, "SUBAGENTS.md"), model, manifest: true, description: "", systemPrompt: "", resumable: false });
 const context = (root, model, models, oauth = true) => ({
-	cwd: root, model, sessionManager: { getBranch: () => [], buildContextEntries: () => [] },
+	cwd: root, model, isProjectTrusted: () => true, sessionManager: { getBranch: () => [], buildContextEntries: () => [] },
 	modelRegistry: { getAvailable: () => models, isUsingOAuth: (child) => { assert.ok(child === model || models.includes(child)); return oauth; } },
 });
 

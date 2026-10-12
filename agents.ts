@@ -179,7 +179,7 @@ export function getBehavioralDefinitionRoots(cwd: string): string[] {
 export function isBehavioralDefinitionPath(value: string, roots: string[]): boolean {
 	return roots.some((root) => {
 		const relative = path.relative(root, path.resolve(value));
-		return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)) || isPathInside(value, root);
+		return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)) || isPathInside(value, root);
 	});
 }
 
@@ -198,9 +198,10 @@ export function resolveLocationalAgentId(cwd: string, id: string): AgentConfig |
 	return loadLocationalAgent(candidate, { readBody: true }).agent ?? null;
 }
 
-export function scanLocationalAgents(cwd: string, options: { maxDepth?: number; timeoutMs?: number } = {}): { agents: AgentConfig[]; errors: string[] } {
+export function scanLocationalAgents(cwd: string, options: { maxDepth?: number; timeoutMs?: number } = {}): { agents: AgentConfig[]; errors: string[]; roots: string[] } {
 	const agents: AgentConfig[] = [];
 	const errors: string[] = [];
+	const roots: string[] = [];
 	const maxDepth = options.maxDepth ?? readPositiveIntegerEnv("PI_SUBAGENT_LOCATIONAL_SCAN_MAX_DEPTH", DEFAULT_LOCATIONAL_SCAN_MAX_DEPTH);
 	const timeoutMs = options.timeoutMs ?? readPositiveIntegerEnv("PI_SUBAGENT_LOCATIONAL_SCAN_TIMEOUT_MS", DEFAULT_LOCATIONAL_SCAN_TIMEOUT_MS);
 	const startedAt = Date.now();
@@ -216,6 +217,8 @@ export function scanLocationalAgents(cwd: string, options: { maxDepth?: number; 
 			const child = path.join(dir, entry.name);
 			if (isBehavioralDefinitionPath(child, behavioralRoots) || isSymlink(child)) continue;
 			if (fs.existsSync(path.join(child, SUBAGENTS_FILE))) {
+				// Source ownership survives invalid agent metadata.
+				roots.push(child);
 				const loaded = loadLocationalAgent(child, { readBody: false });
 				if (loaded.error) errors.push(loaded.error);
 				if (loaded.agent) agents.push(loaded.agent);
@@ -224,7 +227,7 @@ export function scanLocationalAgents(cwd: string, options: { maxDepth?: number; 
 	};
 	visit(path.resolve(cwd), 1);
 	if (timedOut) errors.push(`Locational agent scan stopped after ${timeoutMs}ms. Increase PI_SUBAGENT_LOCATIONAL_SCAN_TIMEOUT_MS if needed.`);
-	return { agents, errors };
+	return { agents, errors, roots };
 }
 
 export function discoverAgents(cwd: string, trustedProject: boolean, options: { includeLocationalAgents?: boolean } = {}): AgentDiscoveryResult {
@@ -247,5 +250,5 @@ export function formatAgentList(agents: AgentConfig[], maxItems: number): { text
 }
 
 function realPathIfExists(value: string): string { try { return fs.realpathSync.native(value); } catch { return path.resolve(value); } }
-export function isPathInside(candidate: string, root: string): boolean { const relative = path.relative(realPathIfExists(root), realPathIfExists(candidate)); return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative)); }
+export function isPathInside(candidate: string, root: string): boolean { const relative = path.relative(realPathIfExists(root), realPathIfExists(candidate)); return relative === "" || (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative)); }
 export function getAgentInstructionsFileName(): string { return SUBAGENTS_FILE; }

@@ -71,7 +71,7 @@ test("JSON transport preserves per-launch speed from receipt through final detai
   trackedSessions.clear();
   const model = { provider: "openai", id: "gpt-6-astra", contextWindow: 10000 };
   const ctx = {
-   cwd: root, model,
+   cwd: root, model, isProjectTrusted: () => true,
    sessionManager: { getBranch: () => [], buildContextEntries: () => [] },
    modelRegistry: { getAvailable: () => [{ provider: "provider", id: "unavailable" }], isUsingOAuth: () => true },
   };

@@ -187,7 +187,7 @@ export function findContextLimitEvidence(...sources: Array<string | undefined>):
 }
 
 export function classifyContextLimitFailure(result: SingleResult, extraSources: string[] = []): boolean {
-	if (!isFailedResult(result) && !result.errorMessage) return false;
+	if (result.stopReason === "aborted" || (!isFailedResult(result) && !result.errorMessage)) return false;
 	const evidence = findContextLimitEvidence(result.stopReason, result.errorMessage, result.stderr, result.stdout, getFinalOutput(result.messages), ...extraSources);
 	if (!evidence) return false;
 	result.stopReason = CONTEXT_LIMIT_STOP_REASON;
@@ -200,7 +200,7 @@ function hasMeaningfulTaskWork(result: SingleResult): boolean {
 }
 
 export function shouldRetryPreferredModelFailure(result: SingleResult): boolean {
-	if (!isFailedResult(result) || hasMeaningfulTaskWork(result)) return false;
+	if (result.stopReason === "aborted" || !isFailedResult(result) || hasMeaningfulTaskWork(result)) return false;
 	if (result.stopReason === CONTEXT_LIMIT_STOP_REASON) return true;
 	const text = [result.errorMessage, result.stderr, getFinalOutput(result.messages), result.stopReason].filter(Boolean).join("\n").toLowerCase();
 	return !text.trim() || /model|provider|rate|429|quota|auth|api key|unauthori[sz]ed|forbidden|permission|billing|overloaded|unavailable|not found|not configured|pre[- ]?start|failed to load|invalid[_ -]?request/.test(text);
@@ -271,6 +271,8 @@ export async function runDelegation(
 		let receivedAt = 0;
 		const progress: ChildProgress = { speed: new TokenSpeedTracker(), now: () => receivedAt };
 		const args = ["--mode", "json", "-p"];
+		// A process-local trust denial must not be replaced by the child's saved trust.
+		if (!ctx.isProjectTrusted()) args.push("--no-approve");
 		if (sessionId) args.push("--session-id", sessionId);
 		else args.push("--no-session");
 		if (model.model) args.push("--model", model.model);
@@ -303,6 +305,12 @@ export async function runDelegation(
 				args.push("--append-system-prompt", promptPath);
 			}
 			args.push(`Task: ${task}`);
+			if (signal?.aborted) {
+				result.exitCode = 130;
+				result.stopReason = "aborted";
+				result.errorMessage = "Subagent was aborted.";
+				return result;
+			}
 			const lifecycle = createAgentLifecycle(agent.id);
 			let contextEvidence: string | undefined;
 			await new Promise<void>((resolve) => {
@@ -354,9 +362,10 @@ export async function runDelegation(
 					result.tokenSpeed = progress.speed.aggregateMeasurement();
 					if (error) recordAgentError(lifecycle, error);
 					markAgentClosed(lifecycle, code);
-					result.exitCode = code;
-					result.stopReason ??= lifecycle.stopReason;
-					result.errorMessage ??= lifecycle.errorMessage;
+					// Cancellation owns the final outcome even after an answer or graceful exit.
+					result.exitCode = lifecycle.stopReason === "aborted" ? 130 : code;
+					result.stopReason = lifecycle.stopReason ?? result.stopReason;
+					result.errorMessage = lifecycle.errorMessage ?? result.errorMessage;
 					resolve();
 				};
 				proc.stdout.setEncoding("utf8");
@@ -388,7 +397,7 @@ export async function runDelegation(
 
 	const first = await runAttempt(resolvedModel);
 	let final = first;
-	if (retryWithCaller && shouldRetryPreferredModelFailure(first)) {
+	if (!signal?.aborted && retryWithCaller && shouldRetryPreferredModelFailure(first)) {
 		final = await runAttempt({ model: resolvedModel.fallbackModel, contextWindow: resolvedModel.fallbackContextWindow, source: "caller" });
 		const warning = `${resolvedModel.source === "agent" ? "Explicit locational model" : "Preferred locational model"} ${first.model ?? "(default)"} failed before task work; retried with caller model ${final.model ?? "(default)"}.`;
 		final.warning = final.warning ? `${final.warning}\n${warning}` : warning;
