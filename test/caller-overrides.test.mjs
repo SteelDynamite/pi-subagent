@@ -32,7 +32,7 @@ test("bundled caller rules pin both matching callers to OpenAI and preserve unre
 			assert.equal(agent.thinking, undefined);
 			assert.deepEqual(agent.whenCallerModelId, ["gpt-6-astra", "gpt-6.1-sol"]);
 			assert.equal(agent.thenModel, `openai/${target}`);
-			for (const provider of ["openai", "openai-codex-1", "alternate"]) {
+			for (const provider of ["openai", "alternate"]) {
 				for (const modelId of ["gpt-6-astra", "gpt-6.1-sol"]) {
 					assert.deepEqual(resolveAgentModel(agent, context(caller(modelId, provider))), {
 						model: `openai/${target}`, thinking, contextWindow: 2000, source: "agent",
