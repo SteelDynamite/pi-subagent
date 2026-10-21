@@ -25,6 +25,10 @@ mkdir -p ~/.pi/agent/prompts
 ln -sf "$(pwd)/prompts/implement.md" ~/.pi/agent/prompts/implement.md
 ```
 
+### Runtime requirements
+
+Delegation requires the hosting `@earendil-works/pi-coding-agent` package to include its runnable CLI, not just an embedded SDK. Node.js and Bun script hosts use that package's declared `bin.pi`; packaged Bun Pi executables use the adjacent Pi distribution. SDK host entrypoints (including bots) are never reused as worker scripts. Missing or unidentifiable CLI installations fail before spawning; there is no `PATH` fallback. Source-only SDK builds need a built CLI. Child environment inheritance is unchanged, not credential isolation.
+
 ## Tool
 
 `subagent` accepts exactly:

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { useFakePi } from "./fixtures/pi-host.mjs";
 import childProcess from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -18,6 +19,9 @@ const lines = (...events) => events.map((event) => JSON.stringify(event) + "\n")
 
 test("JSON transport preserves per-launch speed from receipt through final details", async (t) => {
  const root = mkdtempSync(join(tmpdir(), "pi-subagent-token-speed-"));
+ const script = join(root, "fake-pi.cjs");
+ writeFileSync(script, "");
+ const restorePi = useFakePi(root, script);
  const originalReuse = subagentSettings.reuseEnabled;
  const originalTracked = new Map(trackedSessions);
  const env = new Map(["PI_CHATGPT_SPEED", "PI_SUBAGENT_DEPTH"].map((key) => [key, process.env[key]]));
@@ -120,6 +124,7 @@ test("JSON transport preserves per-launch speed from receipt through final detai
   }
  } finally {
   spawn.mock.restore(); syncBuiltinESMExports();
+  restorePi();
   subagentSettings.reuseEnabled = originalReuse;
   trackedSessions.clear();
   for (const [key, value] of originalTracked) trackedSessions.set(key, value);

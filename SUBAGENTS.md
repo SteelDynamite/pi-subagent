@@ -14,6 +14,14 @@ Definitions are reread on each delegation and before each agent turn; selector e
 
 To bootstrap a locational owner with failed provider authentication, select an authenticated caller model first. An unavailable explicit selector uses the caller immediately; a selected non-caller model may retry once with the caller after a qualifying pre-work provider failure. Preferred-model environment settings do not override explicit `model:` entries. Delegate maintenance to the owner; do not bypass boundaries when owner instructions block edits.
 
+## Launcher identity
+
+Use the hosting Pi's exported `getPackageDir()` through Pi's extension module mapping, then its `package.json` identity and `bin.pi`; do not infer a CLI from host `process.argv[1]` or an arbitrary executable. SDK entrypoints can be credential-bearing bots. Do not replace this with bare `pi`/PATH lookup or forward host runtime flags. `PI_PACKAGE_DIR`, when set, must describe the intended complete Pi distribution, not an assets-only directory.
+
+Node.js/Bun script launches require the declared CLI file. Pi's compiled Bun layout ships `pi` (`pi.exe` on Windows) beside package metadata; only that matching executable is reusable. Source-only or stripped SDK distributions without a CLI fail closed before session allocation, prompt creation, spawn, or model fallback. The host-provided peer is optional for package installation and standalone tests, but required at delegation time; do not bundle a second SDK to resolve it.
+
+Launcher tests must supply package identity separately from inert host entrypoints. Keep cwd, environment, foreground cleanup, resume and model-fallback semantics unchanged. A successful version/startup smoke is not live provider or remote bot-incident validation.
+
 ## Token-speed maintenance
 
 `token-speed.ts` is a self-contained adaptation of `pi-token-speed` 0.1.0 `src/token-speed.ts` (MIT), not a runtime dependency. Golden parity fixtures in `test/fixtures/token-speed.mjs` record the reference source SHA-256. Preserve footer measurement semantics, including first-chunk omission live versus first-token subtraction at completion; do not substitute runtime-average throughput. Reference updates require explicit parity checks, not automatic sibling imports.

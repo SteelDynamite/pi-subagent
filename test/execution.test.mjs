@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { useFakePi } from "./fixtures/pi-host.mjs";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -140,7 +141,7 @@ test("preferred-model retries are limited to conservative pre-work failures", ()
 
 test("runDelegation retries a locational model in the same session", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-fallback-"));
-	const originalArgv = process.argv[1];
+	const restorePi = useFakePi(root, join(root, "fake-pi.cjs"));
 	const originalState = process.env.PI_SUBAGENT_TEST_STATE_FILE;
 	const originalLegacyMarker = process.env.PI_SUBPROCESS_CHILD;
 	try {
@@ -173,7 +174,6 @@ if (call.model === "provider/explicit") {
 }
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "ok via " + call.model }] } }));
 `);
-		process.argv[1] = piPath;
 		process.env.PI_SUBAGENT_TEST_STATE_FILE = stateFile;
 
 		const result = await runDelegation(
@@ -205,14 +205,14 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 		else process.env.PI_SUBAGENT_TEST_STATE_FILE = originalState;
 		if (originalLegacyMarker === undefined) delete process.env.PI_SUBPROCESS_CHILD;
 		else process.env.PI_SUBPROCESS_CHILD = originalLegacyMarker;
-		process.argv[1] = originalArgv;
+		restorePi();
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 
 test("runDelegation forwards definition thinking for new and resumed behavioral and locational children", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-thinking-"));
-	const originalArgv = process.argv[1];
+	const restorePi = useFakePi(root, join(root, "fake-pi.cjs"));
 	const originalState = process.env.PI_SUBAGENT_TEST_STATE_FILE;
 	const originalReuseEnabled = subagentSettings.reuseEnabled;
 	const originalTrackedSessions = new Map(trackedSessions);
@@ -229,7 +229,6 @@ calls.push({ args: process.argv.slice(2) });
 fs.writeFileSync(process.env.PI_SUBAGENT_TEST_STATE_FILE, JSON.stringify(calls));
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }));
 `);
-		process.argv[1] = piPath;
 		process.env.PI_SUBAGENT_TEST_STATE_FILE = stateFile;
 		const ctx = delegationContext(root, []);
 		const behavioral = { ...agent("behavioral"), id: "behavioral-thinking", rootDir: root, resumable: true, thinking: "high" };
@@ -259,18 +258,17 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 		subagentSettings.reuseEnabled = originalReuseEnabled;
 		if (originalState === undefined) delete process.env.PI_SUBAGENT_TEST_STATE_FILE;
 		else process.env.PI_SUBAGENT_TEST_STATE_FILE = originalState;
-		process.argv[1] = originalArgv;
+		restorePi();
 		rmSync(root, { recursive: true, force: true });
 	}
 });
 
 test("runDelegation reports aborted foreground work", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-abort-"));
-	const originalArgv = process.argv[1];
+	const restorePi = useFakePi(root, join(root, "fake-pi.cjs"));
 	try {
 		const piPath = join(root, "fake-pi.cjs");
 		writeFileSync(piPath, "setTimeout(() => {}, 10000);\n");
-		process.argv[1] = piPath;
 		const controller = new AbortController();
 		setTimeout(() => controller.abort(), 30);
 		const result = await runDelegation(
@@ -290,7 +288,7 @@ test("runDelegation reports aborted foreground work", async () => {
 		assert.match(result.errorMessage, /aborted/);
 		assert.notEqual(result.exitCode, 0);
 	} finally {
-		process.argv[1] = originalArgv;
+		restorePi();
 		rmSync(root, { recursive: true, force: true });
 	}
 });

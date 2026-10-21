@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { useFakePi } from "./fixtures/pi-host.mjs";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -18,7 +19,7 @@ const context = (root, model, models, oauth = true) => ({
 
 async function withChild(run) {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-requested-speed-"));
-	const originalArgv = process.argv[1];
+	const restorePi = useFakePi(root, join(root, "fake-pi.cjs"));
 	const originalEnv = new Map(["PI_CHATGPT_SPEED", "PI_CHATGPT_FAST", "PI_SUBAGENT_TEST_STATE_FILE", "PI_SUBAGENT_DEPTH"].map((key) => [key, process.env[key]]));
 	try {
 		const stateFile = join(root, "calls.json");
@@ -36,12 +37,11 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 if (failed) process.exit(1);
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", model, content: [{ type: "text", text: "done" }] } }));
 `);
-		process.argv[1] = executable;
 		process.env.PI_SUBAGENT_TEST_STATE_FILE = stateFile;
 		process.env.PI_SUBAGENT_DEPTH = "0";
 		await run(root, () => JSON.parse(readFileSync(stateFile, "utf8")));
 	} finally {
-		process.argv[1] = originalArgv;
+		restorePi();
 		for (const [key, value] of originalEnv) {
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;

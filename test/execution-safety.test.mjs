@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { useFakePi } from "./fixtures/pi-host.mjs";
 import childProcess from "node:child_process";
 import { syncBuiltinESMExports } from "node:module";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -12,7 +13,7 @@ const details = (results) => ({ includeLocationalAgents: false, locationalAgents
 for (const scenario of ["trust-denied", "trust-allowed", "abort-after-answer", "abort-provider-error", "already-aborted"]) {
 	test(`delegation safety: ${scenario}`, async () => {
 		const root = mkdtempSync(join(tmpdir(), "pi-delegation-safety-"));
-		const originalArgv = process.argv[1];
+		const restorePi = useFakePi(root, join(root, "fake-pi.cjs"));
 		const controller = new AbortController();
 		const originalSpawn = childProcess.spawn;
 		let spawnCount = 0;
@@ -33,7 +34,6 @@ console.log(JSON.stringify({ type: "message_end", message: {
   content: ${scenario === "abort-provider-error" ? "[]" : '[{ type: "text", text: "answer before shutdown" }]'}
 } }));` : ""}
 `);
-			process.argv[1] = script;
 			const local = scenario === "abort-provider-error";
 			if (local) writeFileSync(join(root, "SUBAGENTS.md"), "---\nmodel: provider/explicit\nresumable: false\n---\n");
 			const agent = { id: "test", description: "", manifest: true, systemPrompt: "Safety test", origin: "user", kind: "behavioral", filePath: join(root, "agent.md"), rootDir: root, resumable: false };
@@ -60,7 +60,7 @@ console.log(JSON.stringify({ type: "message_end", message: {
 			controller.abort();
 			childProcess.spawn = originalSpawn;
 			syncBuiltinESMExports();
-			process.argv[1] = originalArgv;
+			restorePi();
 			rmSync(root, { recursive: true, force: true });
 		}
 	});

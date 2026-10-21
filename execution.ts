@@ -213,10 +213,28 @@ async function writePromptToTempFile(agentName: string, prompt: string): Promise
 	return { dir, filePath };
 }
 
-function getPiInvocation(args: string[]): { command: string; args: string[] } {
-	const script = process.argv[1];
-	if (script && !script.startsWith("/$bunfs/root/") && fs.existsSync(script)) return { command: process.execPath, args: [script, ...args] };
-	return /^(node|bun)(\.exe)?$/i.test(path.basename(process.execPath)) ? { command: "pi", args } : { command: process.execPath, args };
+export async function getPiInvocation(args: string[]): Promise<{ command: string; args: string[] }> {
+	// Pi's extension loader maps this import to the hosting Pi, including SDK hosts.
+	// Load lazily so missing host support becomes a delegation error, not a load error.
+	const packageName = "@earendil-works/pi-coding-agent";
+	const { getPackageDir }: { getPackageDir: () => string } = await import(packageName);
+	const root = fs.realpathSync(getPackageDir());
+	const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+	if (pkg.name !== packageName || typeof pkg.bin?.pi !== "string" || !pkg.bin.pi.trim()) {
+		throw new Error("Pi package must declare its name and bin.pi entry.");
+	}
+	if (/^(node|bun)(\.exe)?$/i.test(path.basename(process.execPath))) {
+		const script = fs.realpathSync(path.resolve(root, pkg.bin.pi));
+		if (!fs.statSync(script).isFile()) throw new Error("Pi bin.pi is not a file.");
+		return { command: process.execPath, args: [script, ...args] };
+	}
+	// Pi's Bun distribution ships pi[.exe] and package.json together. Neither an
+	// arbitrary embedded SDK executable nor a PATH command establishes that layout.
+	const binary = path.join(root, process.platform === "win32" ? "pi.exe" : "pi");
+	if (process.versions.bun && fs.realpathSync(process.execPath) === fs.realpathSync(binary)) {
+		return { command: binary, args };
+	}
+	throw new Error("Unsupported Pi CLI runtime; use a Node.js or Bun Pi installation.");
 }
 
 export async function runDelegation(
@@ -259,6 +277,14 @@ export async function runDelegation(
 				recommendedRetry: getWrongIntentRetry(required.intent, required.reason),
 			},
 		});
+	}
+
+	let invocation: Awaited<ReturnType<typeof getPiInvocation>>;
+	try {
+		invocation = await getPiInvocation([]);
+	} catch (error) {
+		const message = `Cannot identify Pi CLI; refusing to launch the host process. Ensure the hosting Pi package has a runnable CLI. ${error instanceof Error ? error.message : String(error)}`;
+		return makeErrorResult(agent.id, task, message, session, { agentOrigin: agent.origin, agentOverride: agent.overrides, agentThinking: resolvedModel.thinking, errorMessage: message });
 	}
 
 	const retryWithCaller = agent.kind === "locational" && Boolean(resolvedModel.fallbackModel) && resolvedModel.fallbackModel !== resolvedModel.model;
@@ -314,7 +340,6 @@ export async function runDelegation(
 			const lifecycle = createAgentLifecycle(agent.id);
 			let contextEvidence: string | undefined;
 			await new Promise<void>((resolve) => {
-				const invocation = getPiInvocation(args);
 				const env = { ...process.env, ...makeSubagentChildEnv(agent, currentDepth, includeLocationalAgentsInBehavioralChild) };
 				if (env.PI_CHATGPT_SPEED?.toLowerCase() === "ultrafast") {
 					const childModel = model.model === formatModelRef(ctx.model) ? ctx.model
@@ -324,7 +349,7 @@ export async function runDelegation(
 						result.requestedSpeed = "ultrafast";
 					}
 				}
-				const proc = spawn(invocation.command, invocation.args, {
+				const proc = spawn(invocation.command, [...invocation.args, ...args], {
 					cwd: result.cwd,
 					env,
 					shell: false,

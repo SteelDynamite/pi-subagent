@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { useFakePi } from "./fixtures/pi-host.mjs";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -129,7 +130,7 @@ test("list rules use immediate caller identity, exact target provider, and exist
 
 test("explicit caller targets preserve speed inheritance, resume effort, and behavioral no-retry", async () => {
 	const root = mkdtempSync(join(tmpdir(), "pi-subagent-caller-launch-"));
-	const originalArgv = process.argv[1];
+	const restorePi = useFakePi(root, join(root, "fake-pi.cjs"));
 	const envKeys = ["PI_CODING_AGENT_DIR", "PI_SUBAGENT_TEST_STATE_FILE", "PI_CHATGPT_SPEED", "PI_CHATGPT_FAST", "PI_SUBAGENT_DEPTH"];
 	const originalEnv = new Map(envKeys.map((key) => [key, process.env[key]]));
 	const originalReuse = subagentSettings.reuseEnabled;
@@ -152,7 +153,6 @@ fs.writeFileSync(process.env.PI_SUBAGENT_TEST_STATE_FILE, JSON.stringify(calls))
 if (args.at(-1) === "Task: fail") { process.stderr.write("provider unavailable"); process.exit(1); }
 console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", content: [{ type: "text", text: "ok" }] } }));
 `);
-		process.argv[1] = piPath;
 		process.env.PI_SUBAGENT_TEST_STATE_FILE = stateFile;
 		const agents = discoverAgents(root, false, { includeLocationalAgents: false }).agents;
 		const ctx = {
@@ -224,7 +224,7 @@ console.log(JSON.stringify({ type: "message_end", message: { role: "assistant", 
 		// Wrong intent launches nothing; behavioral failure launches exactly once.
 		assert.equal(JSON.parse(readFileSync(stateFile, "utf8")).length, calls.length + 1);
 	} finally {
-		process.argv[1] = originalArgv;
+		restorePi();
 		for (const [key, value] of originalEnv) {
 			if (value === undefined) delete process.env[key];
 			else process.env[key] = value;
