@@ -164,6 +164,8 @@ export default function (pi: ExtensionAPI) {
 
 	pi.registerTool({
 		name: "subagent",
+		// Standalone tool rendering and progress require direct model calls in every mode.
+		exposure: "model-only",
 		label: "Subagent",
 		description: "Delegate exactly one task to an isolated behavioral or locational Pi agent and wait for its result. Requires id, session, and task. Behavioral agents inherit the caller directory. Locational agents use a caller-relative or absolute source-root id containing SUBAGENTS.md and run from that root. Behavioral children discover no locational agents unless includeLocationalAgents is true.",
 		promptSnippet: "Delegate one foreground-managed task to an isolated behavioral or locational Pi agent and wait for its result",

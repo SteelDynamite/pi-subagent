@@ -25,6 +25,7 @@ test("extension registers singular settings and the public subagent tool", () =>
 	const { commands, tools } = registerExtension();
 	assert.deepEqual(tools.map((tool) => tool.name), ["subagent"]);
 	assert.equal(tools[0].label, "Subagent");
+	assert.equal(tools[0].exposure, "model-only");
 	const theme = { fg: (_color, text) => text, bold: (text) => text };
 	assert.match(tools[0].renderCall({ id: "scout", session: "new", task: "inspect" }, theme, {}).render(120).join("\n"), /^subagent scout/);
 	assert.deepEqual([...commands.keys()], ["subagent-settings"]);
